@@ -51,7 +51,22 @@ const requireAdmin = (req, res, next) => {
 // Create new item
 router.post('/create', authenticateUser, validate(itemCreateSchema), async (req, res) => {
   try {
-    const { itemType, vendor, lotNumber, dateOfSupply, warrantyMonths, geoLat, geoLng, dynamicData } = req.body;
+    const { 
+      itemType, 
+      vendor, 
+      lotNumber, 
+      dateOfSupply, 
+      manufactureDate,
+      warrantyMonths, 
+      warrantyStartDate,
+      warrantyEndDate,
+      geoLat, 
+      geoLng, 
+      location,
+      geotag,
+      qrAccessPassword,
+      dynamicData 
+    } = req.body;
 
     // Generate unique token
     const uuidToken = generateUniqueToken();
@@ -63,9 +78,15 @@ router.post('/create', authenticateUser, validate(itemCreateSchema), async (req,
       vendor,
       lotNumber,
       dateOfSupply: dateOfSupply ? new Date(dateOfSupply) : undefined,
+      manufactureDate: manufactureDate ? new Date(manufactureDate) : undefined,
       warrantyMonths,
+      warrantyStartDate: warrantyStartDate ? new Date(warrantyStartDate) : undefined,
+      warrantyEndDate: warrantyEndDate ? new Date(warrantyEndDate) : undefined,
       geoLat,
       geoLng,
+      location,
+      geotag,
+      qrAccessPassword,
       dynamicData: dynamicData || {},
       createdBy: req.user.userId
     });
@@ -86,9 +107,15 @@ router.post('/create', authenticateUser, validate(itemCreateSchema), async (req,
         vendor: item.vendor,
         lotNumber: item.lotNumber,
         dateOfSupply: item.dateOfSupply,
+        manufactureDate: item.manufactureDate,
         warrantyMonths: item.warrantyMonths,
+        warrantyStartDate: item.warrantyStartDate,
+        warrantyEndDate: item.warrantyEndDate,
         geoLat: item.geoLat,
         geoLng: item.geoLng,
+        location: item.location,
+        geotag: item.geotag,
+        qrAccessPassword: item.qrAccessPassword,
         dynamicData: item.dynamicData,
         createdAt: item.createdAt
       },
@@ -365,6 +392,126 @@ router.get('/:id/scans', authenticateUser, async (req, res) => {
     });
   } catch (error) {
     console.error('Get scan history error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Update maintenance details for dynamic QR
+router.post('/:token/maintenance', authenticateUser, async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { maintenanceType, description, status, notes } = req.body;
+
+    if (!isValidToken(token)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid token format'
+      });
+    }
+
+    const item = await Item.findOne({ uuidToken: token });
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: 'Item not found'
+      });
+    }
+
+    // Add maintenance record to dynamicData
+    const maintenanceRecord = {
+      id: Date.now().toString(),
+      maintenanceType,
+      description,
+      status,
+      notes,
+      performedBy: req.user.userId,
+      performedAt: new Date(),
+      timestamp: new Date().toISOString()
+    };
+
+    // Initialize maintenanceHistory if it doesn't exist
+    if (!item.dynamicData.maintenanceHistory) {
+      item.dynamicData.maintenanceHistory = [];
+    }
+
+    item.dynamicData.maintenanceHistory.push(maintenanceRecord);
+    item.dynamicData.lastUpdated = new Date().toISOString();
+    item.dynamicData.isDynamic = true;
+
+    await item.save();
+
+    res.json({
+      success: true,
+      message: 'Maintenance record updated successfully',
+      maintenanceRecord,
+      item: {
+        id: item._id,
+        uuidToken: item.uuidToken,
+        itemType: item.itemType,
+        vendor: item.vendor,
+        dynamicData: item.dynamicData
+      }
+    });
+  } catch (error) {
+    console.error('Update maintenance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Get dynamic QR data (for scanning)
+router.get('/dynamic/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    if (!isValidToken(token)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid token format'
+      });
+    }
+
+    const item = await Item.findOne({ uuidToken: token })
+      .populate('createdBy', 'username fullName')
+      .select('-__v');
+
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: 'Item not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      item: {
+        id: item._id,
+        uuidToken: item.uuidToken,
+        itemType: item.itemType,
+        vendor: item.vendor,
+        lotNumber: item.lotNumber,
+        dateOfSupply: item.dateOfSupply,
+        warrantyMonths: item.warrantyMonths,
+        warrantyStartDate: item.warrantyStartDate,
+        warrantyEndDate: item.warrantyEndDate,
+        manufactureDate: item.manufactureDate,
+        geoLat: item.geoLat,
+        geoLng: item.geoLng,
+        location: item.location,
+        geotag: item.geotag,
+        dynamicData: item.dynamicData,
+        createdBy: item.createdBy,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error('Get dynamic QR error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'

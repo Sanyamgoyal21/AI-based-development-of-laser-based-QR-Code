@@ -52,9 +52,18 @@ const itemSchema = new mongoose.Schema({
   dateOfSupply: {
     type: Date
   },
+  manufactureDate: {
+    type: Date
+  },
   warrantyMonths: {
     type: Number,
     min: 0
+  },
+  warrantyStartDate: {
+    type: Date
+  },
+  warrantyEndDate: {
+    type: Date
   },
   geoLat: {
     type: Number,
@@ -65,6 +74,18 @@ const itemSchema = new mongoose.Schema({
     type: Number,
     min: -180,
     max: 180
+  },
+  location: {
+    type: String,
+    trim: true
+  },
+  geotag: {
+    type: String,
+    trim: true
+  },
+  qrAccessPassword: {
+    type: String,
+    trim: true
   },
   dynamicData: {
     type: mongoose.Schema.Types.Mixed,

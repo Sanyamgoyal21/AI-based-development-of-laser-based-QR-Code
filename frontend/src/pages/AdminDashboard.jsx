@@ -7,16 +7,25 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard'); // Track active sidebar item
   const [qrFormData, setQrFormData] = useState({
-    itemType: '',
-    vendor: '',
+    vendorName: '',
     lotNumber: '',
-    dateOfSupply: '',
-    warrantyMonths: ''
+    itemType: 'Elastic Rail Clip',
+    warrantyStartDate: '',
+    warrantyEndDate: '',
+    manufactureDate: '',
+    supplyDate: '',
+    qrAccessPassword: '',
+    location: '',
+    geotag: ''
   });
+  const [dateErrors, setDateErrors] = useState({});
   const [qrLoading, setQrLoading] = useState(false);
   const [qrSuccess, setQrSuccess] = useState('');
   const [qrError, setQrError] = useState('');
   const [generatedQR, setGeneratedQR] = useState(null);
+  const [qrGallery, setQrGallery] = useState([]);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [locationLoading, setLocationLoading] = useState(false);
 
   const fetchItems = async () => {
     try {
@@ -40,13 +49,116 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchQRGallery = async () => {
+    try {
+      const response = await itemsAPI.list({ page: 1, limit: 100 });
+      if (response.data.success) {
+        setQrGallery(response.data.items);
+      }
+    } catch (err) {
+      console.error('Error fetching QR gallery:', err);
+    }
+  };
+
+  const getCurrentLocation = () => {
+    setLocationLoading(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setCurrentLocation({ latitude, longitude });
+          
+          // Get address from coordinates using reverse geocoding
+          fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`)
+            .then(response => response.json())
+            .then(data => {
+              const address = `${data.city || ''}, ${data.principalSubdivision || ''}, ${data.countryName || ''}`.replace(/^,\s*|,\s*$/g, '');
+              setQrFormData(prev => ({
+                ...prev,
+                location: address,
+                geotag: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+              }));
+            })
+            .catch(() => {
+              setQrFormData(prev => ({
+                ...prev,
+                location: 'Location not available',
+                geotag: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+              }));
+            })
+            .finally(() => {
+              setLocationLoading(false);
+            });
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          setLocationLoading(false);
+        }
+      );
+    } else {
+      setLocationLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchItems();
+    fetchQRGallery();
   }, []);
 
   const handleLogout = () => {
     removeAuthToken();
     window.location.href = '/login';
+  };
+
+  const validateDates = (formData) => {
+    const errors = {};
+    const today = new Date();
+    
+    // Manufacture date validation
+    if (formData.manufactureDate) {
+      const manufactureDate = new Date(formData.manufactureDate);
+      if (manufactureDate > today) {
+        errors.manufactureDate = 'Manufacture date cannot be in the future';
+      }
+    }
+    
+    // Supply date validation
+    if (formData.supplyDate) {
+      const supplyDate = new Date(formData.supplyDate);
+      if (supplyDate > today) {
+        errors.supplyDate = 'Supply date cannot be in the future';
+      }
+      if (formData.manufactureDate) {
+        const manufactureDate = new Date(formData.manufactureDate);
+        if (supplyDate < manufactureDate) {
+          errors.supplyDate = 'Supply date cannot be before manufacture date';
+        }
+      }
+    }
+    
+    // Warranty start date validation
+    if (formData.warrantyStartDate) {
+      const warrantyStartDate = new Date(formData.warrantyStartDate);
+      if (formData.supplyDate) {
+        const supplyDate = new Date(formData.supplyDate);
+        if (warrantyStartDate < supplyDate) {
+          errors.warrantyStartDate = 'Warranty start date cannot be before supply date';
+        }
+      }
+    }
+    
+    // Warranty end date validation
+    if (formData.warrantyEndDate) {
+      const warrantyEndDate = new Date(formData.warrantyEndDate);
+      if (formData.warrantyStartDate) {
+        const warrantyStartDate = new Date(formData.warrantyStartDate);
+        if (warrantyEndDate <= warrantyStartDate) {
+          errors.warrantyEndDate = 'Warranty end date must be after warranty start date';
+        }
+      }
+    }
+    
+    return errors;
   };
 
   const handleQRFormChange = (e) => {
@@ -55,6 +167,11 @@ export default function AdminDashboard() {
       ...prev,
       [name]: value
     }));
+    
+    // Validate dates when they change
+    const updatedFormData = { ...qrFormData, [name]: value };
+    const errors = validateDates(updatedFormData);
+    setDateErrors(errors);
   };
 
   const handleQRGeneration = async (e) => {
@@ -63,41 +180,66 @@ export default function AdminDashboard() {
     setQrError('');
     setQrSuccess('');
 
-    try {
-      // Get current location
-      navigator.geolocation.getCurrentPosition(async (position) => {
-        const payload = {
-          itemType: qrFormData.itemType,
-          vendor: qrFormData.vendor,
-          lotNumber: qrFormData.lotNumber,
-          dateOfSupply: qrFormData.dateOfSupply || undefined,
-          warrantyMonths: qrFormData.warrantyMonths ? parseInt(qrFormData.warrantyMonths) : undefined,
-          geoLat: position.coords.latitude,
-          geoLng: position.coords.longitude,
-          dynamicData: {}
-        };
+    // Validate dates before submission
+    const errors = validateDates(qrFormData);
+    if (Object.keys(errors).length > 0) {
+      setDateErrors(errors);
+      setQrError('Please fix the date validation errors before generating QR code');
+      setQrLoading(false);
+      return;
+    }
 
-        const response = await itemsAPI.create(payload);
-        
-        if (response.data.success) {
-          setGeneratedQR(response.data);
-          setQrSuccess('QR Code generated successfully!');
-          setQrFormData({
-            itemType: '',
-            vendor: '',
-            lotNumber: '',
-            dateOfSupply: '',
-            warrantyMonths: ''
-          });
-          // Refresh the items list
-          fetchItems();
-        } else {
-          setQrError(response.data.message || 'Failed to generate QR code');
+    try {
+      // Parse geotag coordinates
+      const geotagCoords = qrFormData.geotag.split(',').map(coord => parseFloat(coord.trim()));
+      
+      const payload = {
+        itemType: qrFormData.itemType,
+        vendor: qrFormData.vendorName,
+        lotNumber: qrFormData.lotNumber,
+        dateOfSupply: qrFormData.supplyDate || undefined,
+        manufactureDate: qrFormData.manufactureDate || undefined,
+        warrantyStartDate: qrFormData.warrantyStartDate || undefined,
+        warrantyEndDate: qrFormData.warrantyEndDate || undefined,
+        geoLat: geotagCoords[0] || currentLocation?.latitude || 0,
+        geoLng: geotagCoords[1] || currentLocation?.longitude || 0,
+        location: qrFormData.location,
+        geotag: qrFormData.geotag,
+        qrAccessPassword: qrFormData.qrAccessPassword,
+        dynamicData: {
+          maintenanceHistory: [],
+          lastUpdated: new Date().toISOString(),
+          isDynamic: true
         }
-      }, (error) => {
-        setQrError('Please enable location access to generate QR codes');
-        setQrLoading(false);
-      });
+      };
+
+      const response = await itemsAPI.create(payload);
+      
+      if (response.data.success) {
+        console.log('QR Generation Response:', response.data);
+        console.log('QR Code Filename:', response.data.qrCode?.filename);
+        console.log('QR Image URL:', `http://localhost:8000/qrcodes/${response.data.qrCode?.filename}`);
+        setGeneratedQR(response.data);
+        setQrSuccess('QR Code generated successfully!');
+        setQrFormData({
+          vendorName: '',
+          lotNumber: '',
+          itemType: 'Elastic Rail Clip',
+          warrantyStartDate: '',
+          warrantyEndDate: '',
+          manufactureDate: '',
+          supplyDate: '',
+          qrAccessPassword: '',
+          location: '',
+          geotag: ''
+        });
+        setDateErrors({});
+        // Refresh the items list and gallery
+        fetchItems();
+        fetchQRGallery();
+      } else {
+        setQrError(response.data.message || 'Failed to generate QR code');
+      }
     } catch (err) {
       setQrError(err.response?.data?.message || 'Failed to generate QR code');
     } finally {
@@ -215,52 +357,35 @@ export default function AdminDashboard() {
 
       case 'qr-generation':
         return (
-          <div className="bg-white rounded-lg p-6 shadow-lg">
-            <h2 className="text-2xl font-display font-bold text-gray-900 mb-6 tracking-tight">QR Code Generation</h2>
-            <p className="text-gray-600 font-condensed mb-6">Generate new QR codes for railway track fittings.</p>
+          <div className="bg-white rounded-lg p-8 shadow-lg">
+            <h2 className="text-2xl font-display font-bold text-gray-900 mb-6 tracking-tight">Item Information</h2>
             
             <form onSubmit={handleQRGeneration} className="space-y-6">
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="itemType" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
-                    Item Type *
+                  <label htmlFor="vendorName" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide mb-2">
+                    Vendor Name
                   </label>
                   <input
                     type="text"
-                    name="itemType"
-                    id="itemType"
-                    required
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
-                    placeholder="Enter item type"
-                    value={qrFormData.itemType}
-                    onChange={handleQRFormChange}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="vendor" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
-                    Vendor
-                  </label>
-                  <input
-                    type="text"
-                    name="vendor"
-                    id="vendor"
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
+                    name="vendorName"
+                    id="vendorName"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 font-condensed"
                     placeholder="Enter vendor name"
-                    value={qrFormData.vendor}
+                    value={qrFormData.vendorName}
                     onChange={handleQRFormChange}
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="lotNumber" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
+                  <label htmlFor="lotNumber" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide mb-2">
                     Lot Number
                   </label>
                   <input
                     type="text"
                     name="lotNumber"
                     id="lotNumber"
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 font-condensed"
                     placeholder="Enter lot number"
                     value={qrFormData.lotNumber}
                     onChange={handleQRFormChange}
@@ -268,33 +393,184 @@ export default function AdminDashboard() {
                 </div>
 
                 <div>
-                  <label htmlFor="dateOfSupply" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
-                    Date of Supply
+                  <label htmlFor="itemType" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide mb-2">
+                    Item Type
+                  </label>
+                  <select
+                    name="itemType"
+                    id="itemType"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 font-condensed"
+                    value={qrFormData.itemType}
+                    onChange={handleQRFormChange}
+                  >
+                    <option value="Elastic Rail Clip">Elastic Rail Clip</option>
+                    <option value="Rail Fastener">Rail Fastener</option>
+                    <option value="Rail Joint">Rail Joint</option>
+                    <option value="Rail Pad">Rail Pad</option>
+                    <option value="Rail Sleeper">Rail Sleeper</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="manufactureDate" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide mb-2">
+                    Manufacture Date
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      name="manufactureDate"
+                      id="manufactureDate"
+                      max={new Date().toISOString().split('T')[0]}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 font-condensed ${
+                        dateErrors.manufactureDate ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                      value={qrFormData.manufactureDate}
+                      onChange={handleQRFormChange}
+                    />
+                    <svg className="absolute right-3 top-3.5 w-5 h-5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  {dateErrors.manufactureDate && (
+                    <p className="mt-1 text-sm text-red-600 font-condensed">{dateErrors.manufactureDate}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="supplyDate" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide mb-2">
+                    Supply Date
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      name="supplyDate"
+                      id="supplyDate"
+                      min={qrFormData.manufactureDate || undefined}
+                      max={new Date().toISOString().split('T')[0]}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 font-condensed ${
+                        dateErrors.supplyDate ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                      value={qrFormData.supplyDate}
+                      onChange={handleQRFormChange}
+                    />
+                    <svg className="absolute right-3 top-3.5 w-5 h-5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  {dateErrors.supplyDate && (
+                    <p className="mt-1 text-sm text-red-600 font-condensed">{dateErrors.supplyDate}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="qrAccessPassword" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide mb-2">
+                    QR Access Password
                   </label>
                   <input
-                    type="date"
-                    name="dateOfSupply"
-                    id="dateOfSupply"
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
-                    value={qrFormData.dateOfSupply}
+                    type="password"
+                    name="qrAccessPassword"
+                    id="qrAccessPassword"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 font-condensed"
+                    placeholder="Set a password to protect this QR"
+                    value={qrFormData.qrAccessPassword}
                     onChange={handleQRFormChange}
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="warrantyMonths" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
-                    Warranty (Months)
+                  <label htmlFor="location" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide mb-2">
+                    Location (Address)
+                  </label>
+                  <div className="flex">
+                    <input
+                      type="text"
+                      name="location"
+                      id="location"
+                      className="flex-1 px-4 py-3 border border-gray-300 rounded-l-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 font-condensed"
+                      placeholder="Enter location address"
+                      value={qrFormData.location}
+                      onChange={handleQRFormChange}
+                    />
+                    <button
+                      type="button"
+                      onClick={getCurrentLocation}
+                      disabled={locationLoading}
+                      className="px-4 py-3 bg-purple-600 text-white rounded-r-lg hover:bg-purple-700 transition-colors font-condensed disabled:opacity-50"
+                    >
+                      {locationLoading ? 'Getting...' : '📍'}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="geotag" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide mb-2">
+                    Geotag (Coordinates)
                   </label>
                   <input
-                    type="number"
-                    name="warrantyMonths"
-                    id="warrantyMonths"
-                    min="0"
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
-                    placeholder="Enter warranty in months"
-                    value={qrFormData.warrantyMonths}
+                    type="text"
+                    name="geotag"
+                    id="geotag"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 font-condensed"
+                    placeholder="Enter coordinates (lat, lng) or click location button"
+                    value={qrFormData.geotag}
                     onChange={handleQRFormChange}
                   />
+                </div>
+              </div>
+
+              {/* Warranty Dates Section - Single Column */}
+              <div className="mt-6">
+                <h3 className="text-lg font-display font-semibold text-gray-900 mb-4 tracking-tight">Warranty Information</h3>
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="warrantyStartDate" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide mb-2">
+                      Warranty Start Date
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="date"
+                        name="warrantyStartDate"
+                        id="warrantyStartDate"
+                        min={qrFormData.supplyDate || undefined}
+                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 font-condensed ${
+                          dateErrors.warrantyStartDate ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        value={qrFormData.warrantyStartDate}
+                        onChange={handleQRFormChange}
+                      />
+                      <svg className="absolute right-3 top-3.5 w-5 h-5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    {dateErrors.warrantyStartDate && (
+                      <p className="mt-1 text-sm text-red-600 font-condensed">{dateErrors.warrantyStartDate}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="warrantyEndDate" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide mb-2">
+                      Warranty End Date
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="date"
+                        name="warrantyEndDate"
+                        id="warrantyEndDate"
+                        min={qrFormData.warrantyStartDate || undefined}
+                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 font-condensed ${
+                          dateErrors.warrantyEndDate ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        value={qrFormData.warrantyEndDate}
+                        onChange={handleQRFormChange}
+                      />
+                      <svg className="absolute right-3 top-3.5 w-5 h-5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    {dateErrors.warrantyEndDate && (
+                      <p className="mt-1 text-sm text-red-600 font-condensed">{dateErrors.warrantyEndDate}</p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -310,11 +586,11 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              <div>
+              <div className="pt-4">
                 <button
                   type="submit"
                   disabled={qrLoading}
-                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-condensed font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 tracking-wide"
+                  className="w-full bg-gradient-to-r from-purple-500 to-purple-700 hover:from-purple-600 hover:to-purple-800 text-white font-condensed font-semibold py-4 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-lg"
                 >
                   {qrLoading ? 'Generating QR Code...' : 'Generate QR Code'}
                 </button>
@@ -323,19 +599,124 @@ export default function AdminDashboard() {
 
             {generatedQR && (
               <div className="mt-8 border-t pt-6">
-                <h3 className="text-lg font-condensed font-medium text-gray-900 mb-4 tracking-wide">Generated QR Code</h3>
-                <div className="bg-gray-50 rounded-lg p-6 text-center">
-                  <div className="mb-4">
-                    <img 
-                      src={`http://localhost:8000/qrcodes/${generatedQR.qrCode.filename}`} 
-                      alt="QR Code" 
-                      className="mx-auto"
-                    />
+                <div className="bg-white rounded-lg p-8 shadow-lg">
+                  <div className="text-center mb-6">
+                    <h3 className="text-2xl font-display font-bold text-gray-900 mb-2 tracking-tight">Generated QR Code</h3>
+                    <p className="text-gray-600 font-condensed">Your QR code has been successfully generated</p>
                   </div>
-                  <div className="text-sm text-gray-600 font-condensed">
-                    <p><strong>Token:</strong> {generatedQR.item.uuidToken}</p>
-                    <p><strong>Item Type:</strong> {generatedQR.item.itemType}</p>
-                    <p><strong>Scan URL:</strong> <a href={generatedQR.qrCode.url} className="text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener noreferrer">{generatedQR.qrCode.url}</a></p>
+                  
+                  <div className="flex flex-col lg:flex-row gap-8 items-center">
+                    {/* QR Code Display */}
+                    <div className="flex-shrink-0">
+                      <div className="bg-gray-50 rounded-xl p-6 border-2 border-gray-200">
+                        {generatedQR.qrCode?.filename ? (
+                          <div className="relative">
+                            <img 
+                              src={`http://localhost:8000/qrcodes/${generatedQR.qrCode.filename}`} 
+                              alt="QR Code" 
+                              className="w-64 h-64 mx-auto rounded-lg shadow-sm"
+                              onError={(e) => {
+                                console.error('QR Image failed to load:', e);
+                                e.target.style.display = 'none';
+                                const fallback = e.target.nextElementSibling;
+                                if (fallback) fallback.style.display = 'flex';
+                              }}
+                            />
+                            <div 
+                              className="w-64 h-64 mx-auto rounded-lg bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300"
+                              style={{ display: 'none' }}
+                            >
+                              <div className="text-center">
+                                <svg className="w-16 h-16 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                                </svg>
+                                <p className="text-gray-500 font-condensed font-medium">QR Code Image</p>
+                                <p className="text-xs text-gray-400 font-condensed mt-1">Loading failed - CORS issue</p>
+                                <button 
+                                  onClick={() => window.open(`http://localhost:8000/qrcodes/${generatedQR.qrCode.filename}`, '_blank')}
+                                  className="mt-2 px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors font-condensed"
+                                >
+                                  Open in New Tab
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-64 h-64 mx-auto rounded-lg bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300">
+                            <div className="text-center">
+                              <svg className="w-16 h-16 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                              </svg>
+                              <p className="text-gray-500 font-condensed font-medium">QR Code Image</p>
+                              <p className="text-xs text-gray-400 font-condensed mt-1">No filename provided</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* QR Details */}
+                    <div className="flex-1">
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                        <div className="flex items-center">
+                          <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <div className="text-green-800 text-sm font-condensed font-medium">QR Code Generated Successfully</div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 mb-6">
+                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                          <span className="text-sm font-condensed font-medium text-gray-600">Generated ID:</span>
+                          <span className="text-sm font-condensed text-gray-900">RT-{new Date().toISOString().slice(0,10).replace(/-/g, '-')}-{Math.floor(Math.random() * 10000)}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                          <span className="text-sm font-condensed font-medium text-gray-600">Dynamic QR:</span>
+                          <span className="text-sm font-condensed text-green-600 font-medium">Yes - Auto Updates</span>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                          <span className="text-sm font-condensed font-medium text-gray-600">Token:</span>
+                          <span className="text-sm font-condensed text-gray-900 font-mono">{generatedQR.item?.uuidToken || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-2">
+                          <span className="text-sm font-condensed font-medium text-gray-600">QR Filename:</span>
+                          <span className="text-sm font-condensed text-gray-900 font-mono">{generatedQR.qrCode?.filename || 'N/A'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <button 
+                          onClick={() => {
+                            if (generatedQR.qrCode?.filename) {
+                              const link = document.createElement('a');
+                              link.href = `http://localhost:8000/qrcodes/${generatedQR.qrCode.filename}`;
+                              link.download = `qr-code-${generatedQR.item?.uuidToken || 'unknown'}.png`;
+                              link.click();
+                            }
+                          }}
+                          className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-condensed font-medium flex items-center justify-center"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Download QR Image
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (generatedQR.qrCode?.filename) {
+                              window.open(`http://localhost:8000/qrcodes/${generatedQR.qrCode.filename}`, '_blank');
+                            }
+                          }}
+                          className="flex-1 px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-condensed font-medium flex items-center justify-center"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                          </svg>
+                          Print QR
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -417,6 +798,55 @@ export default function AdminDashboard() {
                 <p className="text-sm text-gray-500 font-condensed mt-2">Create detailed reports and analytics</p>
               </div>
             </div>
+          </div>
+        );
+
+      case 'qr-gallery':
+        return (
+          <div className="bg-white rounded-lg p-6 shadow-lg">
+            <h2 className="text-2xl font-display font-bold text-gray-900 mb-6 tracking-tight">QR Code Gallery</h2>
+            <p className="text-gray-600 font-condensed mb-6">View all generated QR codes with details.</p>
+            
+            {qrGallery.length === 0 ? (
+              <div className="text-center py-12">
+                <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                </svg>
+                <p className="text-gray-600 font-condensed">No QR codes generated yet</p>
+                <p className="text-sm text-gray-500 font-condensed mt-2">Generate your first QR code to see it here</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {qrGallery.map((item, index) => (
+                  <div key={item._id || index} className="bg-gray-50 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="text-center">
+                      <div className="mb-3">
+                        <img 
+                          src={`http://localhost:8000/qrcodes/${item.qrCode?.filename || 'default.png'}`} 
+                          alt={`QR Code ${index + 1}`} 
+                          className="mx-auto w-32 h-32 object-contain"
+                        />
+                      </div>
+                      <div className="text-sm font-condensed">
+                        <p className="font-semibold text-gray-900 mb-1">#{index + 1}</p>
+                        <p className="text-gray-600 mb-1"><strong>Vendor:</strong> {item.vendor || 'N/A'}</p>
+                        <p className="text-gray-600 mb-1"><strong>Type:</strong> {item.itemType || 'N/A'}</p>
+                        <p className="text-gray-600 mb-1"><strong>Location:</strong> {item.location || 'N/A'}</p>
+                        <p className="text-gray-500 text-xs">ID: {item.uuidToken?.slice(0, 8) || 'N/A'}</p>
+                      </div>
+                      <div className="mt-3 flex space-x-2">
+                        <button className="flex-1 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors font-condensed">
+                          View Details
+                        </button>
+                        <button className="flex-1 px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700 transition-colors font-condensed">
+                          Download
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
 
@@ -578,6 +1008,23 @@ export default function AdminDashboard() {
                   <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2H6zm1 2a1 1 0 000 2h6a1 1 0 100-2H7zm6 7a1 1 0 011 1v3a1 1 0 11-2 0v-3a1 1 0 011-1zm-3 3a1 1 0 100 2h.01a1 1 0 100-2H10zm-4 1a1 1 0 011-1h.01a1 1 0 110 2H7a1 1 0 01-1-1zm1-4a1 1 0 100 2h.01a1 1 0 100-2H7zm2 0a1 1 0 100 2h.01a1 1 0 100-2H9zm2 0a1 1 0 100 2h.01a1 1 0 100-2h-.01z" clipRule="evenodd" />
                 </svg>
                 Reports
+              </a>
+              <a 
+                href="#" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  setActiveTab('qr-gallery');
+                }}
+                className={`flex items-center px-4 py-2 text-sm font-condensed font-medium rounded-lg ${
+                  activeTab === 'qr-gallery' 
+                    ? 'text-white bg-blue-600' 
+                    : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                }`}
+              >
+                <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                </svg>
+                QR Gallery
               </a>
             </div>
           </nav>
