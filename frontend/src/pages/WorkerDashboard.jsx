@@ -73,12 +73,12 @@ export default function WorkerDashboard() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white shadow rounded-lg">
           <div className="px-4 py-5 sm:p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Create New Item</h2>
+            <h2 className="text-2xl font-display font-bold text-gray-900 mb-6 tracking-tight">Create New Item</h2>
             
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="itemType" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="itemType" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
                     Item Type *
                   </label>
                   <input
@@ -86,7 +86,7 @@ export default function WorkerDashboard() {
                     name="itemType"
                     id="itemType"
                     required
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
                     placeholder="Enter item type"
                     value={formData.itemType}
                     onChange={handleInputChange}
@@ -94,14 +94,14 @@ export default function WorkerDashboard() {
                 </div>
 
                 <div>
-                  <label htmlFor="vendor" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="vendor" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
                     Vendor
                   </label>
                   <input
                     type="text"
                     name="vendor"
                     id="vendor"
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
                     placeholder="Enter vendor name"
                     value={formData.vendor}
                     onChange={handleInputChange}
@@ -109,14 +109,14 @@ export default function WorkerDashboard() {
                 </div>
 
                 <div>
-                  <label htmlFor="lotNumber" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="lotNumber" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
                     Lot Number
                   </label>
                   <input
                     type="text"
                     name="lotNumber"
                     id="lotNumber"
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
                     placeholder="Enter lot number"
                     value={formData.lotNumber}
                     onChange={handleInputChange}
@@ -124,21 +124,21 @@ export default function WorkerDashboard() {
                 </div>
 
                 <div>
-                  <label htmlFor="dateOfSupply" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="dateOfSupply" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
                     Date of Supply
                   </label>
                   <input
                     type="date"
                     name="dateOfSupply"
                     id="dateOfSupply"
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
                     value={formData.dateOfSupply}
                     onChange={handleInputChange}
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="warrantyMonths" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="warrantyMonths" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
                     Warranty (Months)
                   </label>
                   <input
@@ -146,7 +146,7 @@ export default function WorkerDashboard() {
                     name="warrantyMonths"
                     id="warrantyMonths"
                     min="0"
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
                     placeholder="Enter warranty in months"
                     value={formData.warrantyMonths}
                     onChange={handleInputChange}
@@ -170,7 +170,7 @@ export default function WorkerDashboard() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-condensed font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 tracking-wide"
                 >
                   {loading ? 'Creating Item...' : 'Create Item & Generate QR Code'}
                 </button>
@@ -179,7 +179,7 @@ export default function WorkerDashboard() {
 
             {qrData && (
               <div className="mt-8 border-t pt-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Generated QR Code</h3>
+                <h3 className="text-lg font-condensed font-medium text-gray-900 mb-4 tracking-wide">Generated QR Code</h3>
                 <div className="bg-gray-50 rounded-lg p-6 text-center">
                   <div className="mb-4">
                     <img 

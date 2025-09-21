@@ -72,10 +72,10 @@ export default function Login() {
 
             {/* Title */}
             <div className="text-center mb-8">
-              <h1 className="text-2xl font-bold text-white mb-2">
+              <h1 className="text-2xl font-display text-white mb-2 tracking-tight">
                 TRACK FITTINGS MANAGEMENT SYSTEM
               </h1>
-              <p className="text-lg font-semibold text-gray-200">
+              <p className="text-lg font-condensed text-gray-200 font-semibold">
                 ADMIN PORTAL
               </p>
             </div>
@@ -84,7 +84,7 @@ export default function Login() {
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Username Field */}
               <div>
-                <label htmlFor="username" className="block text-sm font-medium text-white mb-2">
+                <label htmlFor="username" className="block text-sm font-condensed font-medium text-white mb-2 tracking-wide">
                   USERNAME / EMPLOYEE ID
                 </label>
                 <input
@@ -92,7 +92,7 @@ export default function Login() {
                   name="username"
                   type="text"
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white bg-opacity-70 text-gray-900 placeholder-gray-600"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white bg-opacity-70 text-gray-900 placeholder-gray-600 font-condensed"
                   placeholder="Enter your username or employee ID"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
@@ -101,7 +101,7 @@ export default function Login() {
 
               {/* Password Field */}
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-white mb-2">
+                <label htmlFor="password" className="block text-sm font-condensed font-medium text-white mb-2 tracking-wide">
                   PASSWORD
                 </label>
                 <input
@@ -109,7 +109,7 @@ export default function Login() {
                   name="password"
                   type="password"
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white bg-opacity-70 text-gray-900 placeholder-gray-600"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white bg-opacity-70 text-gray-900 placeholder-gray-600 font-condensed"
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -128,7 +128,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-lg"
+                  className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-condensed font-semibold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-lg tracking-wide"
                 >
                   {loading ? (
                     <div className="flex items-center justify-center">

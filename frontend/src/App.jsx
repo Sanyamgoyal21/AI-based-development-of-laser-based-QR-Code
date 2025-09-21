@@ -1,9 +1,12 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import HomePage from './pages/HomePage';
 import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
 import WorkerDashboard from './pages/WorkerDashboard';
 import ScanLanding from './pages/ScanLanding';
+import PublicPortal from './pages/PublicPortal';
+import PublicDashboard from './pages/PublicDashboard';
 import { getAuthToken } from './services/api';
 
 function App() {
@@ -17,7 +20,10 @@ function App() {
       <div className="App">
         <Routes>
           {/* Public Routes */}
+          <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/public" element={<PublicPortal />} />
+          <Route path="/public-dashboard" element={<PublicDashboard />} />
           <Route path="/scan/:token" element={<ScanLanding />} />
           
           {/* Protected Routes */}
@@ -34,11 +40,8 @@ function App() {
             } 
           />
           
-          {/* Default Route */}
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          
           {/* Catch all route */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
     </Router>

@@ -1,17 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;700&display=swap&v=2');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'Inter', 'Roboto Condensed', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-weight: 400;
+  letter-spacing: -0.025em;
 }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* Professional font styling for government/railway applications */
+.font-condensed {
+  font-family: 'Roboto Condensed', 'Inter', system-ui, sans-serif !important;
+  font-weight: 400;
+  letter-spacing: -0.025em;
+}
+
+.font-display {
+  font-family: 'Inter', 'Roboto Condensed', system-ui, sans-serif !important;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+}
+
+/* Force font changes on all elements */
+* {
+  font-family: 'Inter', 'Roboto Condensed', system-ui, sans-serif !important;
+}
+
+/* Specific overrides for better visibility */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Inter', 'Roboto Condensed', system-ui, sans-serif !important;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+}
+
+button, input, label, span, p, div {
+  font-family: 'Inter', 'Roboto Condensed', system-ui, sans-serif !important;
+}
+
+/* Additional styling to make font changes more visible */
+body {
+  font-family: 'Inter', 'Roboto Condensed', system-ui, sans-serif !important;
+  font-weight: 400;
+  letter-spacing: -0.025em;
+}
+
+/* Ensure all text elements use the new font */
+.text-white, .text-gray-300, .text-gray-400, .text-gray-700, .text-gray-900 {
+  font-family: 'Inter', 'Roboto Condensed', system-ui, sans-serif !important;
 }

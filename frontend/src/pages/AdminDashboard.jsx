@@ -5,6 +5,18 @@ export default function AdminDashboard() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrFormData, setQrFormData] = useState({
+    itemType: '',
+    vendor: '',
+    lotNumber: '',
+    dateOfSupply: '',
+    warrantyMonths: ''
+  });
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrSuccess, setQrSuccess] = useState('');
+  const [qrError, setQrError] = useState('');
+  const [generatedQR, setGeneratedQR] = useState(null);
 
   const fetchItems = async () => {
     try {
@@ -37,74 +49,145 @@ export default function AdminDashboard() {
     window.location.href = '/login';
   };
 
+  const handleQRFormChange = (e) => {
+    const { name, value } = e.target;
+    setQrFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleQRGeneration = async (e) => {
+    e.preventDefault();
+    setQrLoading(true);
+    setQrError('');
+    setQrSuccess('');
+
+    try {
+      // Get current location
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const payload = {
+          itemType: qrFormData.itemType,
+          vendor: qrFormData.vendor,
+          lotNumber: qrFormData.lotNumber,
+          dateOfSupply: qrFormData.dateOfSupply || undefined,
+          warrantyMonths: qrFormData.warrantyMonths ? parseInt(qrFormData.warrantyMonths) : undefined,
+          geoLat: position.coords.latitude,
+          geoLng: position.coords.longitude,
+          dynamicData: {}
+        };
+
+        const response = await itemsAPI.create(payload);
+        
+        if (response.data.success) {
+          setGeneratedQR(response.data);
+          setQrSuccess('QR Code generated successfully!');
+          setQrFormData({
+            itemType: '',
+            vendor: '',
+            lotNumber: '',
+            dateOfSupply: '',
+            warrantyMonths: ''
+          });
+          // Refresh the items list
+          fetchItems();
+        } else {
+          setQrError(response.data.message || 'Failed to generate QR code');
+        }
+      }, (error) => {
+        setQrError('Please enable location access to generate QR codes');
+        setQrLoading(false);
+      });
+    } catch (err) {
+      setQrError(err.response?.data?.message || 'Failed to generate QR code');
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    // Outer container with the railway background image and overlay
+    <div className="min-h-screen relative overflow-hidden bg-gray-900">
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{
+          // --- SETTING THE BACKGROUND IMAGE ---
+          backgroundImage: `url('/railway_sunset_bg_clean.jpg')`, // Assume this is your dashboard background image
+        }}
+      >
+        {/* Overlay for dimming effect */}
+        <div className="absolute inset-0 bg-black bg-opacity-50"></div> {/* Adjust opacity as needed */}
+      </div>
+
+      {/* Main Content Wrapper - everything below is visually layered on top of the background */}
+      <div className="relative z-10 min-h-screen flex flex-col">
       {/* Header */}
-      <div className="bg-gray-800 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="bg-gray-800 bg-opacity-70 backdrop-blur-sm shadow-lg"> {/* Added opacity and blur to header */}
+          <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-4">
-              <div className="w-10 h-10 bg-gradient-to-b from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center">
-                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
-                  <div className="w-6 h-6 bg-yellow-500 rounded-full"></div>
-                </div>
-              </div>
-              <div>
-                <h1 className="text-xl font-bold">TRACK RAILWAYS</h1>
-                <p className="text-sm text-gray-300">TRACK FITTINGS MANAGEMENT SYSTEM</p>
-                <p className="text-xs text-gray-400">ADMIN PORTAL</p>
+                {/* Indian Emblem (Assuming Ashoka Stambh is placed correctly) */}
+                <img 
+                  src="/ashoka_stambh.png" // Path to your Ashoka Stambh PNG with transparent background
+                  alt="Ashoka Stambh Emblem of India" 
+                  className="h-10 w-10 object-contain" // Adjusted size for header
+                />
+                <div>
+                  <h1 className="text-xl font-display font-bold tracking-tight text-white" style={{fontFamily: 'Inter, Roboto Condensed, system-ui, sans-serif', fontWeight: '700', letterSpacing: '-0.05em'}}>TRACK RAILWAYS</h1>
+                  <p className="text-sm text-gray-200 font-condensed" style={{fontFamily: 'Roboto Condensed, Inter, system-ui, sans-serif', fontWeight: '400', letterSpacing: '-0.025em'}}>TRACK FITTINGS MANAGEMENT SYSTEM</p>
+                  <p className="text-xs text-gray-300 font-condensed" style={{fontFamily: 'Roboto Condensed, Inter, system-ui, sans-serif', fontWeight: '400', letterSpacing: '-0.025em'}}>ADMIN PORTAL</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
                   </svg>
-                </div>
-                <span className="text-sm font-medium">ADMIN</span>
+                  </div>
+                  <span className="text-sm font-condensed font-medium text-white">ADMIN</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex">
+        <div className="flex flex-1">
         {/* Sidebar */}
-        <div className="w-64 bg-gray-800 min-h-screen">
+          <div className="w-64 bg-gray-800 bg-opacity-70 backdrop-blur-sm min-h-full"> {/* Added opacity and blur to sidebar */}
           <nav className="mt-8">
             <div className="px-4 space-y-2">
-              <a href="#" className="flex items-center px-4 py-2 text-sm font-medium text-white bg-gray-700 rounded-lg">
+                <a href="#" className="flex items-center px-4 py-2 text-sm font-condensed font-medium text-white bg-blue-600 rounded-lg"> {/* Highlight active link */}
                 <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
                 </svg>
                 Dashboard
               </a>
-              <a href="#" className="flex items-center px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg">
+                <a href="#" className="flex items-center px-4 py-2 text-sm font-condensed font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg">
                 <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
                 </svg>
                 Scan
               </a>
-              <a href="#" className="flex items-center px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg">
+                <a href="#" className="flex items-center px-4 py-2 text-sm font-condensed font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg">
                 <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                 </svg>
                 Tracking
               </a>
-              <a href="#" className="flex items-center px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg">
+                <a href="#" className="flex items-center px-4 py-2 text-sm font-condensed font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg">
                 <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                 </svg>
                 Tracking
               </a>
-              <a href="#" className="flex items-center px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg">
+                <a href="#" className="flex items-center px-4 py-2 text-sm font-condensed font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg">
                 <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                 </svg>
                 Faults Map
               </a>
-              <a href="#" className="flex items-center px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg">
+                <a href="#" className="flex items-center px-4 py-2 text-sm font-condensed font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg">
                 <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2H6zm1 2a1 1 0 000 2h6a1 1 0 100-2H7zm6 7a1 1 0 011 1v3a1 1 0 11-2 0v-3a1 1 0 011-1zm-3 3a1 1 0 100 2h.01a1 1 0 100-2H10zm-4 1a1 1 0 011-1h.01a1 1 0 110 2H7a1 1 0 01-1-1zm1-4a1 1 0 100 2h.01a1 1 0 100-2H7zm2 0a1 1 0 100 2h.01a1 1 0 100-2H9zm2 0a1 1 0 100 2h.01a1 1 0 100-2h-.01z" clipRule="evenodd" />
                 </svg>
@@ -114,41 +197,44 @@ export default function AdminDashboard() {
           </nav>
         </div>
 
-        {/* Main Content */}
+          {/* Main Content Area */}
         <div className="flex-1 p-8">
           {/* Top Row - Metrics Cards */}
           <div className="grid grid-cols-4 gap-6 mb-8">
             {/* Total Fittings Scanned */}
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg p-6 shadow-lg">
+              <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg p-6 shadow-lg bg-opacity-80 backdrop-blur-sm"> {/* Added opacity and blur */}
               <div className="text-white">
-                <p className="text-sm font-medium opacity-90">TOTAL FITTINGS SCANNED</p>
-                <p className="text-3xl font-bold">1,200,500</p>
-              </div>
+                  <p className="text-sm font-condensed font-medium opacity-90 tracking-wide" style={{fontFamily: 'Roboto Condensed, Inter, system-ui, sans-serif', fontWeight: '500', letterSpacing: '0.025em'}}>TOTAL FITTINGS SCANNED</p>
+                  <p className="text-3xl font-display font-bold tracking-tight" style={{fontFamily: 'Inter, Roboto Condensed, system-ui, sans-serif', fontWeight: '700', letterSpacing: '-0.05em'}}>1,200,500</p>
+                </div>
             </div>
 
             {/* Active Consignments */}
-            <div className="bg-gray-700 rounded-lg p-6 shadow-lg">
+              <div className="bg-gray-700 rounded-lg p-6 shadow-lg bg-opacity-80 backdrop-blur-sm"> {/* Added opacity and blur */}
               <div className="text-white">
-                <p className="text-sm font-medium opacity-90">ACTIVE CONSIGNMENTS</p>
-                <p className="text-3xl font-bold">45</p>
-              </div>
+                  <p className="text-sm font-condensed font-medium opacity-90 tracking-wide">ACTIVE CONSIGNMENTS</p>
+                  <p className="text-3xl font-display font-bold tracking-tight">45</p>
+                </div>
             </div>
 
             {/* Critical Faults Reported */}
-            <div className="bg-gray-700 rounded-lg p-6 shadow-lg">
+              <div className="bg-gray-700 rounded-lg p-6 shadow-lg bg-opacity-80 backdrop-blur-sm"> {/* Added opacity and blur */}
               <div className="text-white">
-                <p className="text-sm font-medium opacity-90">CRITICAL FAULTS REPORTED</p>
-                <p className="text-3xl font-bold">8</p>
-              </div>
+                  <p className="text-sm font-condensed font-medium opacity-90 tracking-wide">CRITICAL FAULTS REPORTED</p>
+                  <p className="text-3xl font-display font-bold tracking-tight">8</p>
+                </div>
             </div>
 
             {/* Quick Scan Button */}
-            <div className="bg-blue-600 rounded-lg p-6 shadow-lg flex items-center justify-center">
-              <button className="flex items-center space-x-3 text-white">
+              <div className="bg-blue-600 rounded-lg p-6 shadow-lg flex items-center justify-center bg-opacity-80 backdrop-blur-sm">
+                <button 
+                  onClick={() => setShowQRModal(true)}
+                  className="flex items-center space-x-3 text-white hover:bg-blue-700 rounded-lg p-2 transition-colors"
+                >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
                 </svg>
-                <span className="text-lg font-semibold">QUICK SCAN</span>
+                  <span className="text-lg font-condensed font-semibold tracking-wide">QUICK SCAN</span>
               </button>
             </div>
           </div>
@@ -156,65 +242,227 @@ export default function AdminDashboard() {
           {/* Bottom Row - Activity Logs */}
           <div className="grid grid-cols-3 gap-6">
             {/* Front RORAR */}
-            <div className="bg-gray-800 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">FRONT RORAR</h3>
+              <div className="bg-gray-800 rounded-lg p-6 bg-opacity-70 backdrop-blur-sm"> {/* Added opacity and blur */}
+                <h3 className="text-lg font-condensed font-semibold text-white mb-4 tracking-wide">FRONT RORAR</h3>
               <div className="space-y-3">
                 <div className="flex items-center space-x-3 text-sm">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-gray-300">Scan: Clip #11780 (Passed) (cetisortie Clesnelatio)</span>
+                    <span className="text-gray-300 font-condensed">Scan: Clip #11780 (Passed) (cetisortie Clesnelatio)</span>
                 </div>
                 <div className="flex items-center space-x-3 text-sm">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-gray-300">Scan: Clip #177930 (Passed) (boler bott. Ott nated | Aboswed)</span>
+                    <span className="text-gray-300 font-condensed">Scan: Clip #177930 (Passed) (boler bott. Ott nated | Aboswed)</span>
                 </div>
                 <div className="flex items-center space-x-3 text-sm">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-gray-300">Inspection: Ped IP5S/78 (Passed) Imapesckan Aitbub Dear Derhct (Arrived)</span>
+                    <span className="text-gray-300 font-condensed">Inspection: Ped IP5S/78 (Passed) Imapesckan Aitbub Dear Derhct (Arrived)</span>
                 </div>
                 <div className="flex items-center space-x-3 text-sm">
                   <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                  <span className="text-gray-300">Beaerstion Part 8 Aito81 Reel Ploilvaet (Reetileg (MB.sf Pond)</span>
-                </div>
+                    <span className="text-gray-300 font-condensed">Beaerstion Part 8 Aito81 Reel Ploilvaet (Reetileg (MB.sf Pond)</span>
+                  </div>
               </div>
             </div>
 
             {/* Recent Activity */}
-            <div className="bg-gray-800 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">RECENT ACTIVITY</h3>
+              <div className="bg-gray-800 rounded-lg p-6 bg-opacity-70 backdrop-blur-sm"> {/* Added opacity and blur */}
+                <h3 className="text-lg font-condensed font-semibold text-white mb-4 tracking-wide">RECENT ACTIVITY</h3>
               <div className="space-y-3">
                 <div className="flex items-center space-x-3 text-sm">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-gray-300">Scan: Clip #17990 (Passed) (Deripipaths trinet (Airass)</span>
+                    <span className="text-gray-300 font-condensed">Scan: Clip #17990 (Passed) (Deripipaths trinet (Airass)</span>
                 </div>
                 <div className="flex items-center space-x-3 text-sm">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-gray-300">Scan: Clip #1F5678 (Passed) (Mirer Defket (Convertta)</span>
+                    <span className="text-gray-300 font-condensed">Scan: Clip #1F5678 (Passed) (Mirer Defket (Convertta)</span>
                 </div>
                 <div className="flex items-center space-x-3 text-sm">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-gray-300">Cempectiam (Pad MIT.878 (Passed) Corgrastom Alfteatn Bees (Dfiact (Arrived)</span>
+                    <span className="text-gray-300 font-condensed">Cempectiam (Pad MIT.878 (Passed) Corgrastom Alfteatn Bees (Dfiact (Arrived)</span>
                 </div>
                 <div className="flex items-center space-x-3 text-sm">
                   <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <span className="text-gray-300">Scan: Clip #IV8679 (Bohut Mestapemt #IMIDE2400 (Arrived)</span>
-                </div>
+                    <span className="text-gray-300 font-condensed">Scan: Clip #IV8679 (Bohut Mestapemt #IMIDE2400 (Arrived)</span>
+                  </div>
               </div>
             </div>
 
             {/* Last 10 */}
-            <div className="bg-gray-800 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Last 10</h3>
+              <div className="bg-gray-800 rounded-lg p-6 bg-opacity-70 backdrop-blur-sm"> {/* Added opacity and blur */}
+                <h3 className="text-lg font-condensed font-semibold text-white mb-4 tracking-wide">Last 10</h3>
               <div className="space-y-3">
-                <div className="text-sm text-gray-300">#IID28244005</div>
-                <div className="text-sm text-gray-300">Revan tois</div>
-                <div className="text-sm text-gray-300">#INO2024005</div>
-                <div className="text-sm text-gray-300">Sermikins</div>
-                <div className="text-sm text-gray-300">Cororernet NIG</div>
+                  <div className="text-sm text-gray-300 font-condensed">#IID28244005</div>
+                  <div className="text-sm text-gray-300 font-condensed">Revan tois</div>
+                  <div className="text-sm text-gray-300 font-condensed">#INO2024005</div>
+                  <div className="text-sm text-gray-300 font-condensed">Sermikins</div>
+                  <div className="text-sm text-gray-300 font-condensed">Cororernet NIG</div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* QR Generation Modal */}
+      {showQRModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-display font-bold text-gray-900 tracking-tight">Generate New QR Code</h3>
+                <button
+                  onClick={() => {
+                    setShowQRModal(false);
+                    setQrError('');
+                    setQrSuccess('');
+                    setGeneratedQR(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <form onSubmit={handleQRGeneration} className="space-y-6">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="itemType" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
+                      Item Type *
+                    </label>
+                    <input
+                      type="text"
+                      name="itemType"
+                      id="itemType"
+                      required
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
+                      placeholder="Enter item type"
+                      value={qrFormData.itemType}
+                      onChange={handleQRFormChange}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="vendor" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
+                      Vendor
+                    </label>
+                    <input
+                      type="text"
+                      name="vendor"
+                      id="vendor"
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
+                      placeholder="Enter vendor name"
+                      value={qrFormData.vendor}
+                      onChange={handleQRFormChange}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="lotNumber" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
+                      Lot Number
+                    </label>
+                    <input
+                      type="text"
+                      name="lotNumber"
+                      id="lotNumber"
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
+                      placeholder="Enter lot number"
+                      value={qrFormData.lotNumber}
+                      onChange={handleQRFormChange}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="dateOfSupply" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
+                      Date of Supply
+                    </label>
+                    <input
+                      type="date"
+                      name="dateOfSupply"
+                      id="dateOfSupply"
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
+                      value={qrFormData.dateOfSupply}
+                      onChange={handleQRFormChange}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="warrantyMonths" className="block text-sm font-condensed font-medium text-gray-700 tracking-wide">
+                      Warranty (Months)
+                    </label>
+                    <input
+                      type="number"
+                      name="warrantyMonths"
+                      id="warrantyMonths"
+                      min="0"
+                      className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-condensed"
+                      placeholder="Enter warranty in months"
+                      value={qrFormData.warrantyMonths}
+                      onChange={handleQRFormChange}
+                    />
+                  </div>
+                </div>
+
+                {qrError && (
+                  <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                    <div className="text-red-600 text-sm font-condensed">{qrError}</div>
+                  </div>
+                )}
+
+                {qrSuccess && (
+                  <div className="bg-green-50 border border-green-200 rounded-md p-4">
+                    <div className="text-green-600 text-sm font-condensed">{qrSuccess}</div>
+                  </div>
+                )}
+
+                <div className="flex space-x-4">
+                  <button
+                    type="submit"
+                    disabled={qrLoading}
+                    className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-condensed font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 tracking-wide"
+                  >
+                    {qrLoading ? 'Generating QR Code...' : 'Generate QR Code'}
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowQRModal(false);
+                      setQrError('');
+                      setQrSuccess('');
+                      setGeneratedQR(null);
+                    }}
+                    className="flex-1 flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-condensed font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 tracking-wide"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+
+              {generatedQR && (
+                <div className="mt-8 border-t pt-6">
+                  <h3 className="text-lg font-condensed font-medium text-gray-900 mb-4 tracking-wide">Generated QR Code</h3>
+                  <div className="bg-gray-50 rounded-lg p-6 text-center">
+                    <div className="mb-4">
+                      <img 
+                        src={`http://localhost:8000/qrcodes/${generatedQR.qrCode.filename}`} 
+                        alt="QR Code" 
+                        className="mx-auto"
+                      />
+                    </div>
+                    <div className="text-sm text-gray-600 font-condensed">
+                      <p><strong>Token:</strong> {generatedQR.item.uuidToken}</p>
+                      <p><strong>Item Type:</strong> {generatedQR.item.itemType}</p>
+                      <p><strong>Scan URL:</strong> <a href={generatedQR.qrCode.url} className="text-indigo-600 hover:text-indigo-500" target="_blank" rel="noopener noreferrer">{generatedQR.qrCode.url}</a></p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
