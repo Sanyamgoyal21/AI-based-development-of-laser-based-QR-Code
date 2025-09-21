@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: railqr-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: railqr
+    volumes:
+      - mongodb_data:/data/db
+      - ./backend/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    networks:
+      - railqr-network
+    command: mongod --auth
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: railqr-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URI: mongodb://admin:password123@mongodb:27017/railqr?authSource=admin
+      SECRET_KEY: your-super-secret-key-change-in-production
+      JWT_EXPIRES_IN: 24h
+      NODE_ENV: production
+      BASE_URL: http://localhost:5173
+      QR_CODE_DIR: /app/qrcodes
+    volumes:
+      - qr_codes:/app/qrcodes
+    depends_on:
+      - mongodb
+    networks:
+      - railqr-network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: railqr-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE: http://localhost:8000/api
+    depends_on:
+      - backend
+    networks:
+      - railqr-network
+
+volumes:
+  mongodb_data:
+  qr_codes:
+
+networks:
+  railqr-network:
+    driver: bridge

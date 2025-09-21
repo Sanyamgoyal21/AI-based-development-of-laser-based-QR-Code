@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Rail QR System</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Welcome to Rail QR System 🚆</h1>
+    <p>This is the frontend connected to FastAPI backend.</p>
+    <button onclick="fetchData()">Fetch API Data</button>
+    <pre id="output"></pre>
+
+    <script>
+        async function fetchData() {
+            const res = await fetch("/docs");
+            document.getElementById("output").innerText = 
+                "API is running! Visit /docs to test endpoints.";
+        }
+    </script>
+</body>
+</html>
