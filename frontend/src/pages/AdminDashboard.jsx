@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { itemsAPI, removeAuthToken } from '../services/api';
+import { itemsAPI, removeAuthToken, API_ORIGIN } from '../services/api';
 
 export default function AdminDashboard() {
   const [items, setItems] = useState([]);
@@ -26,6 +26,7 @@ export default function AdminDashboard() {
   const [qrGallery, setQrGallery] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [qrImageUrl, setQrImageUrl] = useState('');
 
   const fetchItems = async () => {
     try {
@@ -104,6 +105,36 @@ export default function AdminDashboard() {
     fetchItems();
     fetchQRGallery();
   }, []);
+
+  // Fetch QR image as blob and create a local object URL to avoid CORP blocking
+  useEffect(() => {
+    const loadQrImage = async () => {
+      try {
+        if (!generatedQR?.qrCode?.filename) {
+          if (qrImageUrl) URL.revokeObjectURL(qrImageUrl);
+          setQrImageUrl('');
+          return;
+        }
+        const res = await fetch(`${API_ORIGIN}/qrcodes/${generatedQR.qrCode.filename}`, {
+          mode: 'cors'
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        setQrImageUrl(url);
+      } catch (e) {
+        console.error('Failed to load QR image:', e);
+        if (qrImageUrl) URL.revokeObjectURL(qrImageUrl);
+        setQrImageUrl('');
+      }
+    };
+
+    loadQrImage();
+
+    return () => {
+      if (qrImageUrl) URL.revokeObjectURL(qrImageUrl);
+    };
+  }, [generatedQR?.qrCode?.filename]);
 
   const handleLogout = () => {
     removeAuthToken();
@@ -357,7 +388,9 @@ export default function AdminDashboard() {
 
       case 'qr-generation':
         return (
-          <div className="bg-white rounded-lg p-8 shadow-lg">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left: Form Card */}
+            <div className="bg-[#ADADAD]/40 rounded-lg p-6 shadow-lg backdrop-blur-sm">
             <h2 className="text-2xl font-display font-bold text-gray-900 mb-6 tracking-tight">Item Information</h2>
             
             <form onSubmit={handleQRGeneration} className="space-y-6">
@@ -586,137 +619,35 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              <div className="pt-4">
+              <div className="pt-2">
                 <button
                   type="submit"
                   disabled={qrLoading}
-                  className="w-full bg-gradient-to-r from-purple-500 to-purple-700 hover:from-purple-600 hover:to-purple-800 text-white font-condensed font-semibold py-4 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-lg"
+                  className="w-full bg-gradient-to-r from-purple-500 to-purple-700 hover:from-purple-600 hover:to-purple-800 text-white font-condensed font-semibold py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
                 >
-                  {qrLoading ? 'Generating QR Code...' : 'Generate QR Code'}
+                  {qrLoading ? 'Generating QR Code...' : 'Generate Unique QR Code'}
                 </button>
               </div>
             </form>
-
-            {generatedQR && (
-              <div className="mt-8 border-t pt-6">
-                <div className="bg-white rounded-lg p-8 shadow-lg">
-                  <div className="text-center mb-6">
-                    <h3 className="text-2xl font-display font-bold text-gray-900 mb-2 tracking-tight">Generated QR Code</h3>
-                    <p className="text-gray-600 font-condensed">Your QR code has been successfully generated</p>
                   </div>
                   
-                  <div className="flex flex-col lg:flex-row gap-8 items-center">
-                    {/* QR Code Display */}
-                    <div className="flex-shrink-0">
-                      <div className="bg-gray-50 rounded-xl p-6 border-2 border-gray-200">
-                        {generatedQR.qrCode?.filename ? (
-                          <div className="relative">
-                            <img 
-                              src={`http://localhost:8000/qrcodes/${generatedQR.qrCode.filename}`} 
-                              alt="QR Code" 
-                              className="w-64 h-64 mx-auto rounded-lg shadow-sm"
-                              onError={(e) => {
-                                console.error('QR Image failed to load:', e);
-                                e.target.style.display = 'none';
-                                const fallback = e.target.nextElementSibling;
-                                if (fallback) fallback.style.display = 'flex';
-                              }}
-                            />
-                            <div 
-                              className="w-64 h-64 mx-auto rounded-lg bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300"
-                              style={{ display: 'none' }}
-                            >
-                              <div className="text-center">
-                                <svg className="w-16 h-16 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                                </svg>
-                                <p className="text-gray-500 font-condensed font-medium">QR Code Image</p>
-                                <p className="text-xs text-gray-400 font-condensed mt-1">Loading failed - CORS issue</p>
-                                <button 
-                                  onClick={() => window.open(`http://localhost:8000/qrcodes/${generatedQR.qrCode.filename}`, '_blank')}
-                                  className="mt-2 px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors font-condensed"
-                                >
-                                  Open in New Tab
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="w-64 h-64 mx-auto rounded-lg bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300">
-                            <div className="text-center">
-                              <svg className="w-16 h-16 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                              </svg>
-                              <p className="text-gray-500 font-condensed font-medium">QR Code Image</p>
-                              <p className="text-xs text-gray-400 font-condensed mt-1">No filename provided</p>
-                            </div>
-                          </div>
+            {/* Right: Preview Card (visible only after generation) */}
+            {generatedQR && (
+              <div className="bg-[#ADADAD]/40 rounded-lg p-6 shadow-lg backdrop-blur-sm">
+                <h2 className="text-xl font-display font-bold text-gray-900 mb-4 tracking-tight">QR Code Preview & Management</h2>
+                <div className="flex flex-col items-center">
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 mb-3">
+                    {generatedQR.qrCode?.filename && qrImageUrl ? (
+                      <img src={qrImageUrl} alt="QR Code" className="w-56 h-56 object-contain" />
+                    ) : (
+                      <div className="w-56 h-56 flex items-center justify-center text-gray-400">QR preview</div>
                         )}
                       </div>
-                    </div>
+                  <p className="text-xs text-gray-500 mb-4">Unique ID: {generatedQR.item?.uuidToken || '—'}</p>
 
-                    {/* QR Details */}
-                    <div className="flex-1">
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                        <div className="flex items-center">
-                          <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          <div className="text-green-800 text-sm font-condensed font-medium">QR Code Generated Successfully</div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-3 mb-6">
-                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                          <span className="text-sm font-condensed font-medium text-gray-600">Generated ID:</span>
-                          <span className="text-sm font-condensed text-gray-900">RT-{new Date().toISOString().slice(0,10).replace(/-/g, '-')}-{Math.floor(Math.random() * 10000)}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                          <span className="text-sm font-condensed font-medium text-gray-600">Dynamic QR:</span>
-                          <span className="text-sm font-condensed text-green-600 font-medium">Yes - Auto Updates</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                          <span className="text-sm font-condensed font-medium text-gray-600">Token:</span>
-                          <span className="text-sm font-condensed text-gray-900 font-mono">{generatedQR.item?.uuidToken || 'N/A'}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2">
-                          <span className="text-sm font-condensed font-medium text-gray-600">QR Filename:</span>
-                          <span className="text-sm font-condensed text-gray-900 font-mono">{generatedQR.qrCode?.filename || 'N/A'}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <button 
-                          onClick={() => {
-                            if (generatedQR.qrCode?.filename) {
-                              const link = document.createElement('a');
-                              link.href = `http://localhost:8000/qrcodes/${generatedQR.qrCode.filename}`;
-                              link.download = `qr-code-${generatedQR.item?.uuidToken || 'unknown'}.png`;
-                              link.click();
-                            }
-                          }}
-                          className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-condensed font-medium flex items-center justify-center"
-                        >
-                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          Download QR Image
-                        </button>
-                        <button 
-                          onClick={() => {
-                            if (generatedQR.qrCode?.filename) {
-                              window.open(`http://localhost:8000/qrcodes/${generatedQR.qrCode.filename}`, '_blank');
-                            }
-                          }}
-                          className="flex-1 px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-condensed font-medium flex items-center justify-center"
-                        >
-                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                          </svg>
-                          Print QR
-                        </button>
-                      </div>
-                    </div>
+                  <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button onClick={async () => { try { if (generatedQR.qrCode?.filename) { const res = await fetch(`${API_ORIGIN}/qrcodes/${generatedQR.qrCode.filename}`); const blob = await res.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `qr-code-${generatedQR.item?.uuidToken || 'unknown'}.png`; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); } } catch (e) { console.error('Download failed', e); } }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Download QR Code (PNG)</button>
+                    <button onClick={() => { if (generatedQR.qrCode?.filename) { window.open(`${API_ORIGIN}/qrcodes/${generatedQR.qrCode.filename}`, '_blank'); } }} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition">Print QR Label</button>
                   </div>
                 </div>
               </div>
@@ -872,7 +803,7 @@ export default function AdminDashboard() {
       {/* Main Content Wrapper - everything below is visually layered on top of the background */}
       <div className="relative z-10 min-h-screen flex flex-col">
       {/* Header */}
-        <div className="bg-gray-800 bg-opacity-70 backdrop-blur-sm shadow-lg"> {/* Added opacity and blur to header */}
+        <div className="bg-[#ADADAD]/40 backdrop-blur-sm shadow-lg"> {/* Semi-transparent custom gray */}
           <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-4">
@@ -904,7 +835,7 @@ export default function AdminDashboard() {
 
         <div className="flex flex-1">
         {/* Sidebar */}
-          <div className="w-64 bg-gray-800 bg-opacity-70 backdrop-blur-sm min-h-full"> {/* Added opacity and blur to sidebar */}
+          <div className="w-64 bg-[#ADADAD]/40 backdrop-blur-sm min-h-full"> {/* Semi-transparent custom gray */}
           <nav className="mt-8">
             <div className="px-4 space-y-2">
                 <a 

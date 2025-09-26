@@ -19,8 +19,10 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 
-// Security middleware
-app.use(helmet());
+// Security middleware (allow cross-origin images for QR previews)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -63,6 +65,9 @@ app.use('/qrcodes', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', process.env.BASE_URL || 'http://localhost:5173');
   res.header('Access-Control-Allow-Methods', 'GET');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
+  // Allow cross-origin resource loading for images
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
   res.header('Cache-Control', 'public, max-age=31536000');
   next();
 }, express.static(path.join(__dirname, 'qrcodes')));

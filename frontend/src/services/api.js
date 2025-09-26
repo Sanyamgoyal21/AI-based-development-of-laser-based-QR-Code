@@ -1,6 +1,8 @@
 import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000/api';
+// Derive the origin (without trailing /api) for accessing static assets like /qrcodes
+export const API_ORIGIN = API_BASE.replace(/\/?api\/?$/, '');
 
 export function setAuthToken(token) {
   localStorage.setItem('token', token);
