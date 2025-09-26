@@ -24,6 +24,7 @@ export default function AdminDashboard() {
   const [qrError, setQrError] = useState('');
   const [generatedQR, setGeneratedQR] = useState(null);
   const [qrGallery, setQrGallery] = useState([]);
+  const [qrGalleryUrls, setQrGalleryUrls] = useState({}); // filename -> blob URL
   const [currentLocation, setCurrentLocation] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [qrImageUrl, setQrImageUrl] = useState('');
@@ -105,6 +106,48 @@ export default function AdminDashboard() {
     fetchItems();
     fetchQRGallery();
   }, []);
+
+  // Build blob URLs for gallery images
+  useEffect(() => {
+    let isCancelled = false;
+    const controllers = [];
+    const loadAll = async () => {
+      try {
+        const entries = qrGallery
+          .map(g => g.qrCode?.filename)
+          .filter(Boolean);
+        const next = {};
+        for (const filename of entries) {
+          try {
+            const controller = new AbortController();
+            controllers.push(controller);
+            const res = await fetch(`${API_ORIGIN}/qrcodes/${filename}`, { signal: controller.signal });
+            if (!res.ok) continue;
+            const blob = await res.blob();
+            next[filename] = URL.createObjectURL(blob);
+          } catch {}
+        }
+        if (!isCancelled) {
+          // Revoke previous URLs
+          Object.values(qrGalleryUrls).forEach(url => URL.revokeObjectURL(url));
+          setQrGalleryUrls(next);
+        } else {
+          Object.values(next).forEach(url => URL.revokeObjectURL(url));
+        }
+      } catch {}
+    };
+    if (qrGallery && qrGallery.length) {
+      loadAll();
+    } else {
+      // Clear
+      Object.values(qrGalleryUrls).forEach(url => URL.revokeObjectURL(url));
+      setQrGalleryUrls({});
+    }
+    return () => {
+      isCancelled = true;
+      controllers.forEach(c => c.abort());
+    };
+  }, [qrGallery]);
 
   // Fetch QR image as blob and create a local object URL to avoid CORP blocking
   useEffect(() => {
@@ -752,11 +795,17 @@ export default function AdminDashboard() {
                   <div key={item._id || index} className="bg-gray-50 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
                     <div className="text-center">
                       <div className="mb-3">
+                        {item.qrCode?.filename && qrGalleryUrls[item.qrCode.filename] ? (
                         <img 
-                          src={`http://localhost:8000/qrcodes/${item.qrCode?.filename || 'default.png'}`} 
+                            src={qrGalleryUrls[item.qrCode.filename]} 
                           alt={`QR Code ${index + 1}`} 
                           className="mx-auto w-32 h-32 object-contain"
                         />
+                        ) : (
+                          <div className="mx-auto w-32 h-32 flex items-center justify-center text-gray-400">
+                            QR
+                          </div>
+                        )}
                       </div>
                       <div className="text-sm font-condensed">
                         <p className="font-semibold text-gray-900 mb-1">#{index + 1}</p>
@@ -769,7 +818,28 @@ export default function AdminDashboard() {
                         <button className="flex-1 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors font-condensed">
                           View Details
                         </button>
-                        <button className="flex-1 px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700 transition-colors font-condensed">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const filename = item.qrCode?.filename;
+                              if (!filename) return;
+                              const res = await fetch(`${API_ORIGIN}/qrcodes/${filename}`);
+                              if (!res.ok) return;
+                              const blob = await res.blob();
+                              const url = URL.createObjectURL(blob);
+                              const link = document.createElement('a');
+                              link.href = url;
+                              link.download = `qr-code-${item.uuidToken || index + 1}.png`;
+                              document.body.appendChild(link);
+                              link.click();
+                              link.remove();
+                              setTimeout(() => URL.revokeObjectURL(url), 1000);
+                            } catch (e) {
+                              console.error('Download failed', e);
+                            }
+                          }}
+                          className="flex-1 px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700 transition-colors font-condensed"
+                        >
                           Download
                         </button>
                       </div>
