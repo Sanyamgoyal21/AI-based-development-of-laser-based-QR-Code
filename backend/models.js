@@ -87,6 +87,10 @@ const itemSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  productImage: {
+    type: String,
+    trim: true
+  },
   dynamicData: {
     type: mongoose.Schema.Types.Mixed,
     default: {}

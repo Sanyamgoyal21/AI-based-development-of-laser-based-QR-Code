@@ -16,7 +16,8 @@ export default function AdminDashboard() {
     supplyDate: '',
     qrAccessPassword: '',
     location: '',
-    geotag: ''
+    geotag: '',
+    productImage: null
   });
   const [dateErrors, setDateErrors] = useState({});
   const [qrLoading, setQrLoading] = useState(false);
@@ -54,7 +55,9 @@ export default function AdminDashboard() {
   const fetchQRGallery = async () => {
     try {
       const response = await itemsAPI.list({ page: 1, limit: 100 });
+      console.log('QR Gallery API response:', response.data);
       if (response.data.success) {
+        console.log('QR Gallery items:', response.data.items);
         setQrGallery(response.data.items);
       }
     } catch (err) {
@@ -116,17 +119,28 @@ export default function AdminDashboard() {
         const entries = qrGallery
           .map(g => g.qrCode?.filename)
           .filter(Boolean);
+        console.log('Loading QR images for filenames:', entries);
         const next = {};
         for (const filename of entries) {
           try {
             const controller = new AbortController();
             controllers.push(controller);
-            const res = await fetch(`${API_ORIGIN}/qrcodes/${filename}`, { signal: controller.signal });
-            if (!res.ok) continue;
+            const url = `${API_ORIGIN}/qrcodes/${filename}`;
+            console.log('Fetching QR image:', url);
+            const res = await fetch(url, { signal: controller.signal });
+            console.log('QR fetch response:', res.status, res.statusText);
+            if (!res.ok) {
+              console.error(`Failed to fetch ${filename}: ${res.status} ${res.statusText}`);
+              continue;
+            }
             const blob = await res.blob();
+            console.log('QR blob created:', blob.size, 'bytes');
             next[filename] = URL.createObjectURL(blob);
-          } catch {}
+          } catch (err) {
+            console.error(`Error loading QR ${filename}:`, err);
+          }
         }
+        console.log('QR gallery URLs created:', Object.keys(next));
         if (!isCancelled) {
           // Revoke previous URLs
           Object.values(qrGalleryUrls).forEach(url => URL.revokeObjectURL(url));
@@ -134,7 +148,9 @@ export default function AdminDashboard() {
         } else {
           Object.values(next).forEach(url => URL.revokeObjectURL(url));
         }
-      } catch {}
+      } catch (err) {
+        console.error('Error in loadAll:', err);
+      }
     };
     if (qrGallery && qrGallery.length) {
       loadAll();
@@ -267,27 +283,32 @@ export default function AdminDashboard() {
       // Parse geotag coordinates
       const geotagCoords = qrFormData.geotag.split(',').map(coord => parseFloat(coord.trim()));
       
-      const payload = {
-        itemType: qrFormData.itemType,
-        vendor: qrFormData.vendorName,
-        lotNumber: qrFormData.lotNumber,
-        dateOfSupply: qrFormData.supplyDate || undefined,
-        manufactureDate: qrFormData.manufactureDate || undefined,
-        warrantyStartDate: qrFormData.warrantyStartDate || undefined,
-        warrantyEndDate: qrFormData.warrantyEndDate || undefined,
-        geoLat: geotagCoords[0] || currentLocation?.latitude || 0,
-        geoLng: geotagCoords[1] || currentLocation?.longitude || 0,
-        location: qrFormData.location,
-        geotag: qrFormData.geotag,
-        qrAccessPassword: qrFormData.qrAccessPassword,
-        dynamicData: {
-          maintenanceHistory: [],
-          lastUpdated: new Date().toISOString(),
-          isDynamic: true
-        }
-      };
+      // Create FormData to handle file upload
+      const formData = new FormData();
+      formData.append('itemType', qrFormData.itemType);
+      formData.append('vendor', qrFormData.vendorName);
+      formData.append('lotNumber', qrFormData.lotNumber);
+      formData.append('dateOfSupply', qrFormData.supplyDate || '');
+      formData.append('manufactureDate', qrFormData.manufactureDate || '');
+      formData.append('warrantyStartDate', qrFormData.warrantyStartDate || '');
+      formData.append('warrantyEndDate', qrFormData.warrantyEndDate || '');
+      formData.append('geoLat', geotagCoords[0] || currentLocation?.latitude || 0);
+      formData.append('geoLng', geotagCoords[1] || currentLocation?.longitude || 0);
+      formData.append('location', qrFormData.location);
+      formData.append('geotag', qrFormData.geotag);
+      formData.append('qrAccessPassword', qrFormData.qrAccessPassword);
+      formData.append('dynamicData', JSON.stringify({
+        maintenanceHistory: [],
+        lastUpdated: new Date().toISOString(),
+        isDynamic: true
+      }));
+      
+      // Add product image if selected
+      if (qrFormData.productImage) {
+        formData.append('productImage', qrFormData.productImage);
+      }
 
-      const response = await itemsAPI.create(payload);
+      const response = await itemsAPI.create(formData);
       
       if (response.data.success) {
         console.log('QR Generation Response:', response.data);
@@ -305,7 +326,8 @@ export default function AdminDashboard() {
           supplyDate: '',
           qrAccessPassword: '',
           location: '',
-          geotag: ''
+          geotag: '',
+          productImage: null
         });
         setDateErrors({});
         // Refresh the items list and gallery
@@ -650,6 +672,120 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              {/* Product Image Upload Section */}
+              <div className="mt-6">
+                <h3 className="text-lg font-display font-semibold text-gray-900 mb-4 tracking-tight">Product Image</h3>
+                <div className="space-y-4">
+                  <div className="flex space-x-4">
+                    <label className="flex-1 cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files[0];
+                          if (file) {
+                            setQrFormData(prev => ({ ...prev, productImage: file }));
+                          }
+                        }}
+                        className="hidden"
+                      />
+                      <div className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 transition-colors duration-200 text-center">
+                        <svg className="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p className="text-sm font-condensed text-gray-600">Upload Image</p>
+                        <p className="text-xs text-gray-500 mt-1">Click to select file</p>
+                      </div>
+                    </label>
+                    
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                          const video = document.createElement('video');
+                          video.srcObject = stream;
+                          video.play();
+                          
+                          const canvas = document.createElement('canvas');
+                          const context = canvas.getContext('2d');
+                          
+                          video.addEventListener('loadedmetadata', () => {
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+                            
+                            const modal = document.createElement('div');
+                            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+                            modal.innerHTML = `
+                              <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                                <h3 class="text-lg font-semibold mb-4">Take Photo</h3>
+                                <video class="w-full rounded mb-4" autoplay></video>
+                                <div class="flex space-x-3">
+                                  <button id="capture-btn" class="flex-1 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">Capture</button>
+                                  <button id="cancel-btn" class="flex-1 bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">Cancel</button>
+                                </div>
+                              </div>
+                            `;
+                            
+                            const modalVideo = modal.querySelector('video');
+                            modalVideo.srcObject = stream;
+                            modalVideo.play();
+                            
+                            modal.querySelector('#capture-btn').onclick = () => {
+                              context.drawImage(video, 0, 0);
+                              canvas.toBlob((blob) => {
+                                const file = new File([blob], 'camera-capture.jpg', { type: 'image/jpeg' });
+                                setQrFormData(prev => ({ ...prev, productImage: file }));
+                                stream.getTracks().forEach(track => track.stop());
+                                document.body.removeChild(modal);
+                              }, 'image/jpeg', 0.8);
+                            };
+                            
+                            modal.querySelector('#cancel-btn').onclick = () => {
+                              stream.getTracks().forEach(track => track.stop());
+                              document.body.removeChild(modal);
+                            };
+                            
+                            document.body.appendChild(modal);
+                          });
+                        } catch (error) {
+                          console.error('Camera access denied:', error);
+                          alert('Camera access denied. Please allow camera access to take photos.');
+                        }
+                      }}
+                      className="flex-1 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 transition-colors duration-200 text-center"
+                    >
+                      <svg className="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <p className="text-sm font-condensed text-gray-600">Take Photo</p>
+                      <p className="text-xs text-gray-500 mt-1">Use camera</p>
+                    </button>
+                  </div>
+                  
+                  {qrFormData.productImage && (
+                    <div className="mt-4">
+                      <p className="text-sm font-condensed text-gray-600 mb-2">Selected Image:</p>
+                      <div className="relative inline-block">
+                        <img
+                          src={URL.createObjectURL(qrFormData.productImage)}
+                          alt="Product preview"
+                          className="w-32 h-32 object-cover rounded-lg border border-gray-300"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setQrFormData(prev => ({ ...prev, productImage: null }))}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {qrError && (
                 <div className="bg-red-50 border border-red-200 rounded-md p-4">
                   <div className="text-red-600 text-sm font-condensed">{qrError}</div>
@@ -688,9 +824,10 @@ export default function AdminDashboard() {
                       </div>
                   <p className="text-xs text-gray-500 mb-4">Unique ID: {generatedQR.item?.uuidToken || '—'}</p>
 
-                  <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <button onClick={async () => { try { if (generatedQR.qrCode?.filename) { const res = await fetch(`${API_ORIGIN}/qrcodes/${generatedQR.qrCode.filename}`); const blob = await res.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `qr-code-${generatedQR.item?.uuidToken || 'unknown'}.png`; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); } } catch (e) { console.error('Download failed', e); } }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Download QR Code (PNG)</button>
-                    <button onClick={() => { if (generatedQR.qrCode?.filename) { window.open(`${API_ORIGIN}/qrcodes/${generatedQR.qrCode.filename}`, '_blank'); } }} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition">Print QR Label</button>
+                  <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <button onClick={async () => { try { if (generatedQR.qrCode?.filename) { const res = await fetch(`${API_ORIGIN}/qrcodes/${generatedQR.qrCode.filename}`); const blob = await res.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `qr-code-${generatedQR.item?.uuidToken || 'unknown'}.png`; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); } } catch (e) { console.error('Download failed', e); } }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm">Download QR Code (PNG)</button>
+                    <button onClick={() => { if (generatedQR.qrCode?.filename) { window.open(`${API_ORIGIN}/qrcodes/${generatedQR.qrCode.filename}`, '_blank'); } }} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm">Print QR Label</button>
+                    <button onClick={async () => { try { const response = await fetch(`${API_ORIGIN}/api/items/pdf/${generatedQR.item?.uuidToken}`, { method: 'GET', headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }); if (response.ok) { const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `qr-details-${generatedQR.item?.uuidToken || 'unknown'}.pdf`; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); } else { console.error('PDF generation failed'); } } catch (e) { console.error('PDF download failed', e); } }} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm">Download PDF</button>
                   </div>
                 </div>
               </div>
@@ -791,21 +928,34 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {qrGallery.map((item, index) => (
-                  <div key={item._id || index} className="bg-gray-50 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                {qrGallery.map((item, index) => {
+                  if (!item) {
+                    console.warn(`QR Gallery item at index ${index} is null/undefined`);
+                    return null;
+                  }
+                  
+                  console.log(`QR Gallery item ${index}:`, item);
+                  
+                  return (
+                    <div key={item._id || item.id || index} className="bg-gray-50 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
                     <div className="text-center">
                       <div className="mb-3">
-                        {item.qrCode?.filename && qrGalleryUrls[item.qrCode.filename] ? (
+                          {item.qrCode?.filename && qrGalleryUrls[item.qrCode.filename] ? (
                         <img 
-                            src={qrGalleryUrls[item.qrCode.filename]} 
+                              src={qrGalleryUrls[item.qrCode.filename]} 
                           alt={`QR Code ${index + 1}`} 
                           className="mx-auto w-32 h-32 object-contain"
                         />
-                        ) : (
-                          <div className="mx-auto w-32 h-32 flex items-center justify-center text-gray-400">
-                            QR
-                          </div>
-                        )}
+                          ) : (
+                            <div className="mx-auto w-32 h-32 flex items-center justify-center text-gray-400 border border-gray-300 rounded">
+                              <div className="text-center">
+                                <div className="text-xs">QR</div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {item.qrCode?.filename ? 'Loading...' : 'No file'}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                       </div>
                       <div className="text-sm font-condensed">
                         <p className="font-semibold text-gray-900 mb-1">#{index + 1}</p>
@@ -813,39 +963,47 @@ export default function AdminDashboard() {
                         <p className="text-gray-600 mb-1"><strong>Type:</strong> {item.itemType || 'N/A'}</p>
                         <p className="text-gray-600 mb-1"><strong>Location:</strong> {item.location || 'N/A'}</p>
                         <p className="text-gray-500 text-xs">ID: {item.uuidToken?.slice(0, 8) || 'N/A'}</p>
+                          <p className="text-gray-500 text-xs">File: {item.qrCode?.filename || 'N/A'}</p>
                       </div>
                       <div className="mt-3 flex space-x-2">
                         <button className="flex-1 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors font-condensed">
                           View Details
                         </button>
-                        <button
-                          onClick={async () => {
-                            try {
-                              const filename = item.qrCode?.filename;
-                              if (!filename) return;
-                              const res = await fetch(`${API_ORIGIN}/qrcodes/${filename}`);
-                              if (!res.ok) return;
-                              const blob = await res.blob();
-                              const url = URL.createObjectURL(blob);
-                              const link = document.createElement('a');
-                              link.href = url;
-                              link.download = `qr-code-${item.uuidToken || index + 1}.png`;
-                              document.body.appendChild(link);
-                              link.click();
-                              link.remove();
-                              setTimeout(() => URL.revokeObjectURL(url), 1000);
-                            } catch (e) {
-                              console.error('Download failed', e);
-                            }
-                          }}
-                          className="flex-1 px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700 transition-colors font-condensed"
-                        >
+                          <button
+                            onClick={async () => {
+                              try {
+                                const filename = item.qrCode?.filename;
+                                if (!filename) {
+                                  console.error('No filename for download');
+                                  return;
+                                }
+                                const res = await fetch(`${API_ORIGIN}/qrcodes/${filename}`);
+                                if (!res.ok) {
+                                  console.error(`Download failed: ${res.status} ${res.statusText}`);
+                                  return;
+                                }
+                                const blob = await res.blob();
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.download = `qr-code-${item.uuidToken || index + 1}.png`;
+                                document.body.appendChild(link);
+                                link.click();
+                                link.remove();
+                                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                              } catch (e) {
+                                console.error('Download failed', e);
+                              }
+                            }}
+                            className="flex-1 px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700 transition-colors font-condensed"
+                          >
                           Download
                         </button>
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

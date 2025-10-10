@@ -58,23 +58,42 @@ const itemCreateSchema = Joi.object({
     .trim()
     .optional()
     .allow(''),
-  dateOfSupply: Joi.date()
+  dateOfSupply: Joi.alternatives()
+    .try(Joi.string().allow(''), Joi.date())
     .optional(),
-  warrantyMonths: Joi.number()
-    .integer()
-    .min(0)
+  manufactureDate: Joi.alternatives()
+    .try(Joi.string().allow(''), Joi.date())
     .optional(),
-  geoLat: Joi.number()
-    .min(-90)
-    .max(90)
+  warrantyStartDate: Joi.alternatives()
+    .try(Joi.string().allow(''), Joi.date())
     .optional(),
-  geoLng: Joi.number()
-    .min(-180)
-    .max(180)
+  warrantyEndDate: Joi.alternatives()
+    .try(Joi.string().allow(''), Joi.date())
     .optional(),
-  dynamicData: Joi.object()
+  warrantyMonths: Joi.alternatives()
+    .try(Joi.number().integer().min(0), Joi.string().allow(''))
+    .optional(),
+  geoLat: Joi.alternatives()
+    .try(Joi.number().min(-90).max(90), Joi.string().allow(''))
+    .optional(),
+  geoLng: Joi.alternatives()
+    .try(Joi.number().min(-180).max(180), Joi.string().allow(''))
+    .optional(),
+  location: Joi.string()
+    .trim()
     .optional()
-    .default({})
+    .allow(''),
+  geotag: Joi.string()
+    .trim()
+    .optional()
+    .allow(''),
+  qrAccessPassword: Joi.string()
+    .trim()
+    .optional()
+    .allow(''),
+  dynamicData: Joi.alternatives()
+    .try(Joi.object(), Joi.string().allow(''))
+    .optional()
 });
 
 const itemUpdateSchema = Joi.object({
@@ -118,13 +137,38 @@ const qrScanSchema = Joi.object({
 // Validation middleware
 const validate = (schema) => {
   return (req, res, next) => {
-    const { error, value } = schema.validate(req.body, { 
+    // Convert FormData values to appropriate types
+    const processedBody = { ...req.body };
+    
+    // Convert string numbers to actual numbers
+    if (processedBody.geoLat && !isNaN(processedBody.geoLat)) {
+      processedBody.geoLat = parseFloat(processedBody.geoLat);
+    }
+    if (processedBody.geoLng && !isNaN(processedBody.geoLng)) {
+      processedBody.geoLng = parseFloat(processedBody.geoLng);
+    }
+    if (processedBody.warrantyMonths && !isNaN(processedBody.warrantyMonths)) {
+      processedBody.warrantyMonths = parseInt(processedBody.warrantyMonths);
+    }
+    
+    // Parse dynamicData if it's a string
+    if (processedBody.dynamicData && typeof processedBody.dynamicData === 'string') {
+      try {
+        processedBody.dynamicData = JSON.parse(processedBody.dynamicData);
+      } catch (e) {
+        processedBody.dynamicData = {};
+      }
+    }
+    
+    const { error, value } = schema.validate(processedBody, { 
       abortEarly: false,
       stripUnknown: true 
     });
     
     if (error) {
       const errorMessages = error.details.map(detail => detail.message);
+      console.error('Validation Error:', errorMessages);
+      console.error('Request Body:', processedBody);
       return res.status(400).json({
         success: false,
         message: 'Validation error',

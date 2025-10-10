@@ -52,7 +52,17 @@ export const authAPI = {
 };
 
 export const itemsAPI = {
-  create: (itemData) => api.post('/items/create', itemData),
+  create: (itemData) => {
+    // Check if itemData is FormData
+    if (itemData instanceof FormData) {
+      return api.post('/items/create', itemData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+    }
+    return api.post('/items/create', itemData);
+  },
   getByToken: (token) => api.get(`/items/by-token/${token}`),
   list: (params) => api.get('/items/list', { params }),
   update: (id, itemData) => api.put(`/items/${id}`, itemData),

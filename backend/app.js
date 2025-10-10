@@ -4,6 +4,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const multer = require('multer');
+const fs = require('fs');
 require('dotenv').config({ path: './config.env' });
 
 // Import database connection
@@ -18,6 +20,51 @@ const app = express();
 
 // Connect to MongoDB
 connectDB();
+
+// Create directories for file uploads
+const uploadsDir = path.join(__dirname, 'uploads');
+const productImagesDir = path.join(__dirname, 'product-images');
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+if (!fs.existsSync(productImagesDir)) {
+  fs.mkdirSync(productImagesDir, { recursive: true });
+}
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    if (file.fieldname === 'productImage') {
+      cb(null, productImagesDir);
+    } else {
+      cb(null, uploadsDir);
+    }
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: function (req, file, cb) {
+    if (file.fieldname === 'productImage') {
+      if (file.mimetype.startsWith('image/')) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only image files are allowed for product images'), false);
+      }
+    } else {
+      cb(null, true);
+    }
+  }
+});
 
 // Security middleware (allow cross-origin images for QR previews)
 app.use(helmet({
@@ -71,6 +118,20 @@ app.use('/qrcodes', (req, res, next) => {
   res.header('Cache-Control', 'public, max-age=31536000');
   next();
 }, express.static(path.join(__dirname, 'qrcodes')));
+
+// Make upload middleware available to routes
+app.locals.upload = upload;
+
+// Static file serving for product images
+app.use('/product-images', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', process.env.BASE_URL || 'http://localhost:5173');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  res.header('Cache-Control', 'public, max-age=31536000');
+  next();
+}, express.static(path.join(__dirname, 'product-images')));
 
 // API Routes
 app.use('/api/auth', authRoutes);
