@@ -187,9 +187,15 @@ router.get('/by-token/:token', authenticateUser, async (req, res) => {
         vendor: item.vendor,
         lotNumber: item.lotNumber,
         dateOfSupply: item.dateOfSupply,
+        manufactureDate: item.manufactureDate,
+        warrantyStartDate: item.warrantyStartDate,
+        warrantyEndDate: item.warrantyEndDate,
         warrantyMonths: item.warrantyMonths,
+        location: item.location,
+        geotag: item.geotag,
         geoLat: item.geoLat,
         geoLng: item.geoLng,
+        productImage: item.productImage,
         dynamicData: item.dynamicData,
         createdBy: item.createdBy,
         createdAt: item.createdAt,
@@ -641,6 +647,162 @@ router.get('/pdf/:uuidToken', authenticateUser, async (req, res) => {
       doc.text(detail.value, 80, yPosition + 8);
       yPosition += 15;
     });
+    
+    // Inspection Data Section (if exists)
+    if (item.dynamicData) {
+      if (yPosition > 200) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      // Inspection Notes
+      if (item.dynamicData.inspectionNotes) {
+        doc.setFillColor(...lightGray);
+        doc.rect(10, yPosition, 190, 15, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Inspection Notes:', 15, yPosition + 10);
+        yPosition += 20;
+        
+        // Split long text into multiple lines
+        const inspectionText = item.dynamicData.inspectionNotes;
+        const maxWidth = 180;
+        const lines = doc.splitTextToSize(inspectionText, maxWidth);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        lines.forEach(line => {
+          if (yPosition > 250) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          doc.text(line, 15, yPosition);
+          yPosition += 6;
+        });
+        yPosition += 10;
+      }
+      
+      // Quality Report
+      if (item.dynamicData.qualityReport) {
+        if (yPosition > 200) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        
+        doc.setFillColor(...lightGray);
+        doc.rect(10, yPosition, 190, 15, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Quality Report:', 15, yPosition + 10);
+        yPosition += 20;
+        
+        const qualityText = item.dynamicData.qualityReport;
+        const qualityLines = doc.splitTextToSize(qualityText, 180);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        qualityLines.forEach(line => {
+          if (yPosition > 250) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          doc.text(line, 15, yPosition);
+          yPosition += 6;
+        });
+        yPosition += 10;
+      }
+      
+      // Recommendations
+      if (item.dynamicData.recommendations) {
+        if (yPosition > 200) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        
+        doc.setFillColor(...lightGray);
+        doc.rect(10, yPosition, 190, 15, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Recommendations:', 15, yPosition + 10);
+        yPosition += 20;
+        
+        const recommendationsText = item.dynamicData.recommendations;
+        const recommendationsLines = doc.splitTextToSize(recommendationsText, 180);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        recommendationsLines.forEach(line => {
+          if (yPosition > 250) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          doc.text(line, 15, yPosition);
+          yPosition += 6;
+        });
+        yPosition += 10;
+      }
+      
+      // Vendor Notes
+      if (item.dynamicData.vendorNotes) {
+        if (yPosition > 200) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        
+        doc.setFillColor(...lightGray);
+        doc.rect(10, yPosition, 190, 15, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Vendor Notes:', 15, yPosition + 10);
+        yPosition += 20;
+        
+        const vendorText = item.dynamicData.vendorNotes;
+        const vendorLines = doc.splitTextToSize(vendorText, 180);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        vendorLines.forEach(line => {
+          if (yPosition > 250) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          doc.text(line, 15, yPosition);
+          yPosition += 6;
+        });
+        yPosition += 10;
+      }
+      
+      // Service Information
+      if (item.dynamicData.serviceDate || item.dynamicData.nextInspection) {
+        if (yPosition > 200) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        
+        doc.setFillColor(...lightGray);
+        doc.rect(10, yPosition, 190, 15, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Service Information:', 15, yPosition + 10);
+        yPosition += 20;
+        
+        if (item.dynamicData.serviceDate) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.text('Service Date:', 15, yPosition);
+          doc.setFont('helvetica', 'normal');
+          doc.text(new Date(item.dynamicData.serviceDate).toLocaleString(), 80, yPosition);
+          yPosition += 12;
+        }
+        
+        if (item.dynamicData.nextInspection) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.text('Next Inspection:', 15, yPosition);
+          doc.setFont('helvetica', 'normal');
+          doc.text(new Date(item.dynamicData.nextInspection).toLocaleDateString(), 80, yPosition);
+          yPosition += 12;
+        }
+        
+        yPosition += 10;
+      }
+    }
     
     // QR Code section
     if (yPosition > 200) {

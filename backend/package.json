@@ -32,7 +32,9 @@
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "puppeteer": "^24.24.0",
+    "qr": "^0.5.2",
     "qrcode": "^1.5.3",
+    "scanner": "^0.0.7",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

@@ -68,5 +68,6 @@ export const itemsAPI = {
   update: (id, itemData) => api.put(`/items/${id}`, itemData),
   delete: (id) => api.delete(`/items/${id}`),
   scan: (token, location) => api.post(`/items/scan/${token}`, { location }),
-  getScanHistory: (id) => api.get(`/items/${id}/scans`)
+  getScanHistory: (id) => api.get(`/items/${id}/scans`),
+  getPDF: (uuidToken) => api.get(`/items/pdf/${uuidToken}`, { responseType: 'blob' })
 };
