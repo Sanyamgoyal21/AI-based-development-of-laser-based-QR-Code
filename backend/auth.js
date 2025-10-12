@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { User } = require('./models');
 require('dotenv').config({ path: './config.env' });
 
 const SECRET_KEY = process.env.SECRET_KEY || 'super-secret-key';
@@ -41,10 +42,117 @@ const extractToken = (authHeader) => {
   return authHeader.substring(7);
 };
 
+// Authentication middleware
+const authenticateUser = async (req, res, next) => {
+  try {
+    const token = extractToken(req.headers.authorization);
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token required'
+      });
+    }
+
+    const decoded = verifyAccessToken(token);
+    if (!decoded) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    if (!user.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: 'Your account has been disabled. Please contact the administrator for assistance.'
+      });
+    }
+
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error('Authentication error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Require admin role (admin or superadmin)
+const requireAdmin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required'
+    });
+  }
+
+  if (!['admin', 'superadmin'].includes(req.user.role)) {
+    return res.status(403).json({
+      success: false,
+      message: 'Admin access required'
+    });
+  }
+
+  next();
+};
+
+// Require superadmin role
+const requireSuperAdmin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required'
+    });
+  }
+
+  if (req.user.role !== 'superadmin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Superadmin access required'
+    });
+  }
+
+  next();
+};
+
+// Check if user can access manage users
+const canManageUsers = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required'
+    });
+  }
+
+  if (!['admin', 'superadmin'].includes(req.user.role)) {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: Manage users not allowed for your role'
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   hashPassword,
   verifyPassword,
   createAccessToken,
   verifyAccessToken,
-  extractToken
+  extractToken,
+  authenticateUser,
+  requireAdmin,
+  requireSuperAdmin,
+  canManageUsers
 };

@@ -1,6 +1,6 @@
 const express = require('express');
 const { Item, QRScanLog, User } = require('./models');
-const { verifyAccessToken, extractToken } = require('./auth');
+const { authenticateUser, requireAdmin } = require('./auth');
 const { itemCreateSchema, itemUpdateSchema, qrScanSchema, validate } = require('./validation');
 const { generateUniqueToken, createQRPNGForToken, isValidToken } = require('./utils_qr');
 const path = require('path');
@@ -10,46 +10,6 @@ require('dotenv').config({ path: './config.env' });
 
 const router = express.Router();
 
-// Middleware to authenticate user
-const authenticateUser = async (req, res, next) => {
-  try {
-    const token = extractToken(req.headers.authorization);
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'No token provided'
-      });
-    }
-
-    const decoded = verifyAccessToken(token);
-    if (!decoded) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid token'
-      });
-    }
-
-    req.user = decoded;
-    next();
-  } catch (error) {
-    console.error('Authentication error:', error);
-    res.status(401).json({
-      success: false,
-      message: 'Authentication failed'
-    });
-  }
-};
-
-// Middleware to check admin role
-const requireAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({
-      success: false,
-      message: 'Admin access required'
-    });
-  }
-  next();
-};
 
 // Create new item
 router.post('/create', authenticateUser, (req, res, next) => {

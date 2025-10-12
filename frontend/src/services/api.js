@@ -6,6 +6,8 @@ export const API_ORIGIN = API_BASE.replace(/\/?api\/?$/, '');
 
 export function setAuthToken(token) {
   localStorage.setItem('token', token);
+  // Dispatch custom event to notify App component of auth state change
+  window.dispatchEvent(new Event('authStateChange'));
 }
 
 export function getAuthToken() {
@@ -14,6 +16,8 @@ export function getAuthToken() {
 
 export function removeAuthToken() {
   localStorage.removeItem('token');
+  // Dispatch custom event to notify App component of auth state change
+  window.dispatchEvent(new Event('authStateChange'));
 }
 
 export const api = axios.create({ 
@@ -70,4 +74,13 @@ export const itemsAPI = {
   scan: (token, location) => api.post(`/items/scan/${token}`, { location }),
   getScanHistory: (id) => api.get(`/items/${id}/scans`),
   getPDF: (uuidToken) => api.get(`/items/pdf/${uuidToken}`, { responseType: 'blob' })
+};
+
+export const usersAPI = {
+  list: () => api.get('/users/list'),
+  create: (userData) => api.post('/users/create', userData),
+  update: (id, userData) => api.put(`/users/update/${id}`, userData),
+  delete: (id) => api.delete(`/users/delete/${id}`),
+  changePassword: (id, newPassword) => api.put(`/users/change-password/${id}`, { newPassword }),
+  getById: (id) => api.get(`/users/${id}`)
 };

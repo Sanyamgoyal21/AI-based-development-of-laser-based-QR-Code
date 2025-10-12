@@ -69,6 +69,14 @@ router.post('/login', validate(userLoginSchema), async (req, res) => {
       });
     }
 
+    // Check if user is active
+    if (!user.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: 'Your account has been disabled. Please contact the administrator for assistance.'
+      });
+    }
+
     // Verify password
     const isPasswordValid = await verifyPassword(password, user.password);
     if (!isPasswordValid) {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { itemsAPI, removeAuthToken, API_ORIGIN } from '../services/api';
+import { itemsAPI, usersAPI, authAPI, removeAuthToken, API_ORIGIN } from '../services/api';
 import QrScanner from 'qr-scanner';
 
 export default function AdminDashboard() {
@@ -7,6 +7,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard'); // Track active sidebar item
+  const [activeSection, setActiveSection] = useState('dashboard'); // Track active section for manage users
   const [qrFormData, setQrFormData] = useState({
     vendorName: '',
     lotNumber: '',
@@ -41,6 +42,28 @@ export default function AdminDashboard() {
   const [vendorNotes, setVendorNotes] = useState('');
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().slice(0, 16));
   const [nextInspection, setNextInspection] = useState('');
+  
+  // User Management states
+  const [users, setUsers] = useState([]);
+  const [userLoading, setUserLoading] = useState(false);
+  const [userError, setUserError] = useState('');
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userFormData, setUserFormData] = useState({
+    username: '',
+    password: '',
+    fullName: '',
+    email: '',
+    phone: '',
+    role: 'employee',
+    isActive: true,
+    vendorInfo: {
+      companyName: '',
+      address: '',
+      contactPerson: ''
+    }
+  });
   
   // Ref for file input
   const fileInputRef = useRef(null);
@@ -307,10 +330,182 @@ export default function AdminDashboard() {
     }
   };
 
+  // User Management Functions
+  const fetchUsers = async () => {
+    try {
+      setUserLoading(true);
+      setUserError('');
+      const response = await usersAPI.list();
+      if (response.data.success) {
+        setUsers(response.data.users);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setUserError('Failed to fetch users');
+    } finally {
+      setUserLoading(false);
+    }
+  };
+
+  const handleCreateUser = async () => {
+    try {
+      setUserLoading(true);
+      setUserError('');
+      
+      const response = await usersAPI.create(userFormData);
+      if (response.data.success) {
+        setUsers([...users, response.data.user]);
+        setShowUserModal(false);
+        resetUserForm();
+        alert('User created successfully!');
+      }
+    } catch (error) {
+      console.error('Error creating user:', error);
+      setUserError(error.response?.data?.message || 'Failed to create user');
+    } finally {
+      setUserLoading(false);
+    }
+  };
+
+  const handleUpdateUser = async () => {
+    try {
+      setUserLoading(true);
+      setUserError('');
+      
+      const response = await usersAPI.update(editingUser.id, userFormData);
+      if (response.data.success) {
+        setUsers(users.map(user => user.id === editingUser.id ? response.data.user : user));
+        setShowUserModal(false);
+        setEditingUser(null);
+        resetUserForm();
+        alert('User updated successfully!');
+      }
+    } catch (error) {
+      console.error('Error updating user:', error);
+      setUserError(error.response?.data?.message || 'Failed to update user');
+    } finally {
+      setUserLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    if (!confirm('Are you sure you want to delete this user?')) return;
+    
+    try {
+      setUserLoading(true);
+      await usersAPI.delete(userId);
+      setUsers(users.filter(user => user.id !== userId));
+      alert('User deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert('Failed to delete user');
+    } finally {
+      setUserLoading(false);
+    }
+  };
+
+  const handleChangePassword = async (userId) => {
+    const newPassword = prompt('Enter new password:');
+    if (!newPassword) return;
+    
+    try {
+      setUserLoading(true);
+      await usersAPI.changePassword(userId, newPassword);
+      alert('Password changed successfully!');
+    } catch (error) {
+      console.error('Error changing password:', error);
+      alert('Failed to change password');
+    } finally {
+      setUserLoading(false);
+    }
+  };
+
+  const handleToggleUserStatus = async (userId, currentStatus) => {
+    const action = currentStatus ? 'disable' : 'enable';
+    if (!confirm(`Are you sure you want to ${action} this user?`)) return;
+    
+    try {
+      setUserLoading(true);
+      const response = await usersAPI.update(userId, { isActive: !currentStatus });
+      if (response.data.success) {
+        setUsers(users.map(user => 
+          user.id === userId ? { ...user, isActive: !currentStatus } : user
+        ));
+        alert(`User ${action}d successfully!`);
+      }
+    } catch (error) {
+      console.error(`Error ${action}ing user:`, error);
+      alert(`Failed to ${action} user`);
+    } finally {
+      setUserLoading(false);
+    }
+  };
+
+  const resetUserForm = () => {
+    setUserFormData({
+      username: '',
+      password: '',
+      fullName: '',
+      email: '',
+      phone: '',
+      role: 'employee',
+      isActive: true,
+      vendorInfo: {
+        companyName: '',
+        address: '',
+        contactPerson: ''
+      }
+    });
+  };
+
+  const openUserModal = (user = null) => {
+    if (user) {
+      setEditingUser(user);
+      setUserFormData({
+        username: user.username,
+        password: '',
+        fullName: user.fullName,
+        email: user.email || '',
+        phone: user.phone || '',
+        role: user.role,
+        isActive: user.isActive,
+        vendorInfo: user.vendorInfo || {
+          companyName: '',
+          address: '',
+          contactPerson: ''
+        }
+      });
+    } else {
+      setEditingUser(null);
+      resetUserForm();
+    }
+    setShowUserModal(true);
+    setUserError('');
+  };
+
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await authAPI.getProfile();
+      if (response.data.success) {
+        setCurrentUser(response.data.user);
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+    }
+  };
+
   useEffect(() => {
     fetchItems();
     fetchQRGallery();
+    fetchCurrentUser();
   }, []);
+
+  // Fetch users when manage-users section is active
+  useEffect(() => {
+    if (activeSection === 'manage-users') {
+      fetchUsers();
+    }
+  }, [activeSection]);
 
   // Build blob URLs for gallery images
   useEffect(() => {
@@ -545,7 +740,341 @@ export default function AdminDashboard() {
     }
   };
 
+  const renderManageUsers = () => {
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="bg-[#ADADAD]/40 backdrop-blur-sm rounded-lg p-6 shadow-lg">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-display font-bold text-gray-900 tracking-tight">User Management</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Total Users: {users.length} | Active: {users.filter(u => u.isActive).length} | Inactive: {users.filter(u => !u.isActive).length}
+              </p>
+            </div>
+            <button
+              onClick={() => openUserModal()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Add New User
+            </button>
+          </div>
+        </div>
+
+        {/* Users Table */}
+        <div className="bg-[#ADADAD]/40 backdrop-blur-sm rounded-lg p-6 shadow-lg">
+          {userLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-600 mt-2">Loading users...</p>
+            </div>
+          ) : userError ? (
+            <div className="text-center py-8">
+              <p className="text-red-600">{userError}</p>
+              <button
+                onClick={fetchUsers}
+                className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left text-gray-500">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3">Username</th>
+                    <th className="px-6 py-3">Full Name</th>
+                    <th className="px-6 py-3">Email</th>
+                    <th className="px-6 py-3">Phone</th>
+                    <th className="px-6 py-3">Role</th>
+                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3">Created</th>
+                    <th className="px-6 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="bg-white border-b hover:bg-gray-50">
+                      <td className="px-6 py-4 font-medium text-gray-900">{user.username}</td>
+                      <td className="px-6 py-4">{user.fullName}</td>
+                      <td className="px-6 py-4">{user.email || '-'}</td>
+                      <td className="px-6 py-4">{user.phone || '-'}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          user.role === 'superadmin' ? 'bg-purple-100 text-purple-800' :
+                          user.role === 'admin' ? 'bg-blue-100 text-blue-800' :
+                          user.role === 'vendor' ? 'bg-green-100 text-green-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {user.role.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {user.isActive ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {new Date(user.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => openUserModal(user)}
+                            className="text-blue-600 hover:text-blue-800"
+                            title="Edit User"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleToggleUserStatus(user.id, user.isActive)}
+                            className={`${user.isActive ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'}`}
+                            title={user.isActive ? 'Disable User' : 'Enable User'}
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              {user.isActive ? (
+                                <path fillRule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clipRule="evenodd" />
+                              ) : (
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              )}
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleChangePassword(user.id)}
+                            className="text-yellow-600 hover:text-yellow-800"
+                            title="Change Password"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUser(user.id)}
+                            className="text-red-600 hover:text-red-800"
+                            title="Delete User"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* User Modal */}
+        {showUserModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold mb-4">
+                {editingUser ? 'Edit User' : 'Create New User'}
+              </h3>
+              
+              {userError && (
+                <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
+                  {userError}
+                </div>
+              )}
+
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                if (editingUser) {
+                  handleUpdateUser();
+                } else {
+                  handleCreateUser();
+                }
+              }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Username *
+                    </label>
+                    <input
+                      type="text"
+                      value={userFormData.username}
+                      onChange={(e) => setUserFormData({...userFormData, username: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                      disabled={editingUser}
+                    />
+                  </div>
+
+                  {!editingUser && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Password *
+                      </label>
+                      <input
+                        type="password"
+                        value={userFormData.password}
+                        onChange={(e) => setUserFormData({...userFormData, password: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Full Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={userFormData.fullName}
+                      onChange={(e) => setUserFormData({...userFormData, fullName: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      value={userFormData.email}
+                      onChange={(e) => setUserFormData({...userFormData, email: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={userFormData.phone}
+                      onChange={(e) => setUserFormData({...userFormData, phone: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Role *
+                    </label>
+                    <select
+                      value={userFormData.role}
+                      onChange={(e) => setUserFormData({...userFormData, role: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    >
+                      <option value="employee">Employee</option>
+                      <option value="admin">Admin</option>
+                      <option value="vendor">Vendor</option>
+                      <option value="superadmin">Superadmin</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={userFormData.isActive}
+                        onChange={(e) => setUserFormData({...userFormData, isActive: e.target.checked})}
+                        className="mr-2"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Active</span>
+                    </label>
+                  </div>
+
+                  {userFormData.role === 'vendor' && (
+                    <div className="border-t pt-4">
+                      <h4 className="font-medium text-gray-700 mb-3">Vendor Information</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Company Name
+                          </label>
+                          <input
+                            type="text"
+                            value={userFormData.vendorInfo.companyName}
+                            onChange={(e) => setUserFormData({
+                              ...userFormData,
+                              vendorInfo: {...userFormData.vendorInfo, companyName: e.target.value}
+                            })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Address
+                          </label>
+                          <textarea
+                            value={userFormData.vendorInfo.address}
+                            onChange={(e) => setUserFormData({
+                              ...userFormData,
+                              vendorInfo: {...userFormData.vendorInfo, address: e.target.value}
+                            })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            rows="2"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Contact Person
+                          </label>
+                          <input
+                            type="text"
+                            value={userFormData.vendorInfo.contactPerson}
+                            onChange={(e) => setUserFormData({
+                              ...userFormData,
+                              vendorInfo: {...userFormData.vendorInfo, contactPerson: e.target.value}
+                            })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUserModal(false);
+                      setEditingUser(null);
+                      resetUserForm();
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={userLoading}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    {userLoading ? 'Saving...' : (editingUser ? 'Update' : 'Create')}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderContent = () => {
+    // Handle manage-users section separately
+    if (activeSection === 'manage-users') {
+      return renderManageUsers();
+    }
+    
     switch (activeTab) {
       case 'dashboard':
         return (
@@ -579,7 +1108,10 @@ export default function AdminDashboard() {
               {/* Quick Scan Button */}
               <div className="bg-blue-600 rounded-lg p-6 shadow-lg flex items-center justify-center bg-opacity-80 backdrop-blur-sm">
                 <button 
-                  onClick={() => setActiveTab('scan')}
+                  onClick={() => {
+                    setActiveTab('scan');
+                    setActiveSection('dashboard'); // Clear manage-users section
+                  }}
                   className="flex items-center space-x-3 text-white hover:bg-blue-700 rounded-lg p-2 transition-colors"
                 >
                   <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
@@ -1696,8 +2228,24 @@ export default function AdminDashboard() {
                     <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
                   </svg>
                 </div>
-                  <span className="text-sm font-condensed font-medium text-white">ADMIN</span>
+                <div className="text-right">
+                  <span className="text-sm font-condensed font-medium text-white">
+                    {currentUser ? currentUser.fullName : 'ADMIN'}
+                  </span>
+                  <p className="text-xs text-gray-300">
+                    {currentUser ? currentUser.role.toUpperCase() : 'ADMIN'}
+                  </p>
               </div>
+              </div>
+              <button
+                onClick={() => {
+                  removeAuthToken();
+                  window.location.href = '/login';
+                }}
+                className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
+              >
+                Logout
+              </button>
             </div>
           </div>
         </div>
@@ -1713,9 +2261,10 @@ export default function AdminDashboard() {
                   onClick={(e) => {
                     e.preventDefault();
                     setActiveTab('dashboard');
+                    setActiveSection('dashboard'); // Clear manage-users section
                   }}
                   className={`flex items-center px-4 py-2 text-sm font-condensed font-medium rounded-lg ${
-                    activeTab === 'dashboard' 
+                    activeTab === 'dashboard' && activeSection !== 'manage-users'
                       ? 'text-white bg-blue-600' 
                       : 'text-gray-300 hover:text-white hover:bg-gray-700'
                   }`}
@@ -1730,9 +2279,10 @@ export default function AdminDashboard() {
                 onClick={(e) => {
                   e.preventDefault();
                   setActiveTab('qr-generation');
+                  setActiveSection('dashboard'); // Clear manage-users section
                 }}
                 className={`flex items-center px-4 py-2 text-sm font-condensed font-medium rounded-lg ${
-                  activeTab === 'qr-generation' 
+                  activeTab === 'qr-generation' && activeSection !== 'manage-users'
                     ? 'text-white bg-blue-600' 
                     : 'text-gray-300 hover:text-white hover:bg-gray-700'
                 }`}
@@ -1747,9 +2297,10 @@ export default function AdminDashboard() {
                   onClick={(e) => {
                     e.preventDefault();
                     setActiveTab('scan');
+                    setActiveSection('dashboard'); // Clear manage-users section
                   }}
                   className={`flex items-center px-4 py-2 text-sm font-condensed font-medium rounded-lg ${
-                    activeTab === 'scan' 
+                    activeTab === 'scan' && activeSection !== 'manage-users'
                       ? 'text-white bg-blue-600' 
                       : 'text-gray-300 hover:text-white hover:bg-gray-700'
                   }`}
@@ -1764,9 +2315,10 @@ export default function AdminDashboard() {
                   onClick={(e) => {
                     e.preventDefault();
                     setActiveTab('tracking');
+                    setActiveSection('dashboard'); // Clear manage-users section
                   }}
                   className={`flex items-center px-4 py-2 text-sm font-condensed font-medium rounded-lg ${
-                    activeTab === 'tracking' 
+                    activeTab === 'tracking' && activeSection !== 'manage-users'
                       ? 'text-white bg-blue-600' 
                       : 'text-gray-300 hover:text-white hover:bg-gray-700'
                   }`}
@@ -1781,9 +2333,10 @@ export default function AdminDashboard() {
                   onClick={(e) => {
                     e.preventDefault();
                     setActiveTab('faults-map');
+                    setActiveSection('dashboard'); // Clear manage-users section
                   }}
                   className={`flex items-center px-4 py-2 text-sm font-condensed font-medium rounded-lg ${
-                    activeTab === 'faults-map' 
+                    activeTab === 'faults-map' && activeSection !== 'manage-users'
                       ? 'text-white bg-blue-600' 
                       : 'text-gray-300 hover:text-white hover:bg-gray-700'
                   }`}
@@ -1798,9 +2351,10 @@ export default function AdminDashboard() {
                   onClick={(e) => {
                     e.preventDefault();
                     setActiveTab('reports');
+                    setActiveSection('dashboard'); // Clear manage-users section
                   }}
                   className={`flex items-center px-4 py-2 text-sm font-condensed font-medium rounded-lg ${
-                    activeTab === 'reports' 
+                    activeTab === 'reports' && activeSection !== 'manage-users'
                       ? 'text-white bg-blue-600' 
                       : 'text-gray-300 hover:text-white hover:bg-gray-700'
                   }`}
@@ -1815,9 +2369,10 @@ export default function AdminDashboard() {
                 onClick={(e) => {
                   e.preventDefault();
                   setActiveTab('qr-gallery');
+                  setActiveSection('dashboard'); // Clear manage-users section
                 }}
                 className={`flex items-center px-4 py-2 text-sm font-condensed font-medium rounded-lg ${
-                  activeTab === 'qr-gallery' 
+                  activeTab === 'qr-gallery' && activeSection !== 'manage-users'
                     ? 'text-white bg-blue-600' 
                     : 'text-gray-300 hover:text-white hover:bg-gray-700'
                 }`}
@@ -1826,6 +2381,26 @@ export default function AdminDashboard() {
                   <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
                 </svg>
                 QR Gallery
+              </a>
+              
+              {/* Manage Users - Only for admin and superadmin */}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setActiveSection('manage-users');
+                  setActiveTab(''); // Clear other tabs
+                }}
+                className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                  activeSection === 'manage-users'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                }`}
+              >
+                <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                </svg>
+                Manage Users
               </a>
             </div>
           </nav>

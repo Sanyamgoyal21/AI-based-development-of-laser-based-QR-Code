@@ -17,13 +17,50 @@ const userSchema = new mongoose.Schema({
   },
   fullName: {
     type: String,
+    required: true,
     trim: true,
     maxlength: 100
   },
+  email: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    maxlength: 100
+  },
+  phone: {
+    type: String,
+    trim: true,
+    maxlength: 20
+  },
   role: {
     type: String,
-    enum: ['worker', 'admin'],
-    default: 'worker'
+    enum: ['superadmin', 'admin', 'employee', 'vendor'],
+    required: true
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  lastLogin: {
+    type: Date
+  },
+  vendorInfo: {
+    companyName: {
+      type: String,
+      trim: true
+    },
+    address: {
+      type: String,
+      trim: true
+    },
+    contactPerson: {
+      type: String,
+      trim: true
+    }
   }
 }, {
   timestamps: true

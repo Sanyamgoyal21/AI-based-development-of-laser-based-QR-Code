@@ -1,19 +1,35 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
 import WorkerDashboard from './pages/WorkerDashboard';
+import VendorPortal from './pages/VendorPortal';
 import ScanLanding from './pages/ScanLanding';
 import PublicPortal from './pages/PublicPortal';
 import PublicDashboard from './pages/PublicDashboard';
 import { getAuthToken } from './services/api';
 
 function App() {
-  // Check if user is authenticated
-  const isAuthenticated = () => {
-    return !!getAuthToken();
-  };
+  const [isAuthenticated, setIsAuthenticated] = useState(!!getAuthToken());
+
+  // Listen for storage changes to update authentication state
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setIsAuthenticated(!!getAuthToken());
+    };
+
+    // Listen for storage events (when localStorage changes in other tabs)
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also listen for custom events (when localStorage changes in same tab)
+    window.addEventListener('authStateChange', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('authStateChange', handleStorageChange);
+    };
+  }, []);
 
   return (
     <Router>
@@ -30,13 +46,19 @@ function App() {
           <Route 
             path="/admin" 
             element={
-              isAuthenticated() ? <AdminDashboard /> : <Navigate to="/login" replace />
+              isAuthenticated ? <AdminDashboard /> : <Navigate to="/login" replace />
             } 
           />
           <Route 
             path="/worker" 
             element={
-              isAuthenticated() ? <WorkerDashboard /> : <Navigate to="/login" replace />
+              isAuthenticated ? <WorkerDashboard /> : <Navigate to="/login" replace />
+            } 
+          />
+          <Route 
+            path="/vendor" 
+            element={
+              isAuthenticated ? <VendorPortal /> : <Navigate to="/login" replace />
             } 
           />
           

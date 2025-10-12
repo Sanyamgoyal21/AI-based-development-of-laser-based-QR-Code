@@ -21,16 +21,25 @@ export default function Login() {
         setAuthToken(response.data.token);
         // Navigate based on user role
         const userRole = response.data.user.role;
-        if (userRole === 'admin') {
+        if (userRole === 'superadmin' || userRole === 'admin') {
           navigate('/admin');
-        } else {
+        } else if (userRole === 'employee') {
           navigate('/worker');
+        } else if (userRole === 'vendor') {
+          navigate('/vendor');
+        } else {
+          navigate('/worker'); // Default fallback
         }
       } else {
         setError(response.data.message || 'Login failed');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
+      if (err.response?.status === 401 && err.response?.data?.message?.includes('inactive')) {
+        // User is disabled, show contact details
+        setError('Your account has been disabled. Please contact the administrator for assistance.');
+      } else {
+        setError(err.response?.data?.message || 'Login failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -120,6 +129,16 @@ export default function Login() {
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                   <p className="text-red-600 text-sm text-center">{error}</p>
+                  {error.includes('disabled') && (
+                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
+                      <p className="text-blue-800 text-sm font-semibold mb-2">Contact Administrator:</p>
+                      <div className="text-blue-700 text-xs space-y-1">
+                        <p><strong>Name:</strong> System Administrator</p>
+                        <p><strong>Email:</strong> admin@railqr.com</p>
+                        <p><strong>Phone:</strong> +91-XXX-XXXX-XXX</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
