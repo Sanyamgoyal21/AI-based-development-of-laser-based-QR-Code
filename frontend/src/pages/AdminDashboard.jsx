@@ -11,7 +11,7 @@ export default function AdminDashboard() {
   const [qrFormData, setQrFormData] = useState({
     vendorName: '',
     lotNumber: '',
-    itemType: 'Elastic Rail Clip',
+     itemType: 'Elastic Rail Clip',
     warrantyStartDate: '',
     warrantyEndDate: '',
     manufactureDate: '',
@@ -372,9 +372,9 @@ export default function AdminDashboard() {
       setUserLoading(true);
       setUserError('');
       
-      const response = await usersAPI.update(editingUser.id, userFormData);
+      const response = await usersAPI.update(editingUser._id, userFormData);
       if (response.data.success) {
-        setUsers(users.map(user => user.id === editingUser.id ? response.data.user : user));
+        setUsers(users.map(user => user._id === editingUser._id ? response.data.user : user));
         setShowUserModal(false);
         setEditingUser(null);
         resetUserForm();
@@ -394,7 +394,7 @@ export default function AdminDashboard() {
     try {
       setUserLoading(true);
       await usersAPI.delete(userId);
-      setUsers(users.filter(user => user.id !== userId));
+      setUsers(users.filter(user => user._id !== userId));
       alert('User deleted successfully!');
     } catch (error) {
       console.error('Error deleting user:', error);
@@ -429,7 +429,7 @@ export default function AdminDashboard() {
       const response = await usersAPI.update(userId, { isActive: !currentStatus });
       if (response.data.success) {
         setUsers(users.map(user => 
-          user.id === userId ? { ...user, isActive: !currentStatus } : user
+          user._id === userId ? { ...user, isActive: !currentStatus } : user
         ));
         alert(`User ${action}d successfully!`);
       }
@@ -683,9 +683,9 @@ export default function AdminDashboard() {
       // Create FormData to handle file upload
       const formData = new FormData();
       formData.append('itemType', qrFormData.itemType);
-      formData.append('vendor', qrFormData.vendorName);
+      formData.append('vendorName', qrFormData.vendorName);
       formData.append('lotNumber', qrFormData.lotNumber);
-      formData.append('dateOfSupply', qrFormData.supplyDate || '');
+      formData.append('supplyDate', qrFormData.supplyDate || '');
       formData.append('manufactureDate', qrFormData.manufactureDate || '');
       formData.append('warrantyStartDate', qrFormData.warrantyStartDate || '');
       formData.append('warrantyEndDate', qrFormData.warrantyEndDate || '');
@@ -822,46 +822,61 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex space-x-2">
-                          <button
-                            onClick={() => openUserModal(user)}
-                            className="text-blue-600 hover:text-blue-800"
-                            title="Edit User"
-                          >
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleToggleUserStatus(user.id, user.isActive)}
-                            className={`${user.isActive ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'}`}
-                            title={user.isActive ? 'Disable User' : 'Enable User'}
-                          >
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              {user.isActive ? (
-                                <path fillRule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clipRule="evenodd" />
-                              ) : (
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                              )}
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleChangePassword(user.id)}
-                            className="text-yellow-600 hover:text-yellow-800"
-                            title="Change Password"
-                          >
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteUser(user.id)}
-                            className="text-red-600 hover:text-red-800"
-                            title="Delete User"
-                          >
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                            </svg>
-                          </button>
+                          {/* Edit button - Hide for superadmins if current user is admin */}
+                          {!(currentUser?.role === 'admin' && user.role === 'superadmin') && (
+                            <button
+                              onClick={() => openUserModal(user)}
+                              className="text-blue-600 hover:text-blue-800"
+                              title="Edit User"
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                              </svg>
+                            </button>
+                          )}
+                          
+                          {/* Enable/Disable button - Hide for superadmins if current user is admin */}
+                          {!(currentUser?.role === 'admin' && user.role === 'superadmin') && (
+                            <button
+                              onClick={() => handleToggleUserStatus(user._id, user.isActive)}
+                              className={`${user.isActive ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'}`}
+                              title={user.isActive ? 'Disable User' : 'Enable User'}
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                {user.isActive ? (
+                                  <path fillRule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clipRule="evenodd" />
+                                ) : (
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                )}
+                              </svg>
+                            </button>
+                          )}
+                          
+                          {/* Change Password button - Hide for superadmins if current user is admin */}
+                          {!(currentUser?.role === 'admin' && user.role === 'superadmin') && (
+                            <button
+                              onClick={() => handleChangePassword(user._id)}
+                              className="text-yellow-600 hover:text-yellow-800"
+                              title="Change Password"
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          )}
+                          
+                          {/* Delete button - Only superadmins can delete users */}
+                          {currentUser?.role === 'superadmin' && (
+                            <button
+                              onClick={() => handleDeleteUser(user._id)}
+                              className="text-red-600 hover:text-red-800"
+                              title="Delete User"
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -974,7 +989,10 @@ export default function AdminDashboard() {
                       <option value="employee">Employee</option>
                       <option value="admin">Admin</option>
                       <option value="vendor">Vendor</option>
-                      <option value="superadmin">Superadmin</option>
+                      {/* Only superadmins can create other superadmins */}
+                      {currentUser?.role === 'superadmin' && (
+                        <option value="superadmin">Superadmin</option>
+                      )}
                     </select>
                   </div>
 
@@ -2384,24 +2402,26 @@ export default function AdminDashboard() {
               </a>
               
               {/* Manage Users - Only for admin and superadmin */}
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setActiveSection('manage-users');
-                  setActiveTab(''); // Clear other tabs
-                }}
-                className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-                  activeSection === 'manage-users'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-300 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
-                </svg>
-                Manage Users
-              </a>
+              {currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin') && (
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setActiveSection('manage-users');
+                    setActiveTab(''); // Clear other tabs
+                  }}
+                  className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                    activeSection === 'manage-users'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                  }`}
+                >
+                  <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                  </svg>
+                  Manage Users
+                </a>
+              )}
             </div>
           </nav>
         </div>

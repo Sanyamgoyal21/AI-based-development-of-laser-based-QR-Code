@@ -28,9 +28,9 @@ router.post('/create', authenticateUser, (req, res, next) => {
   try {
     const { 
       itemType, 
-      vendor, 
+      vendorName, 
       lotNumber, 
-      dateOfSupply, 
+      supplyDate, 
       manufactureDate,
       warrantyMonths, 
       warrantyStartDate,
@@ -56,9 +56,9 @@ router.post('/create', authenticateUser, (req, res, next) => {
     const item = new Item({
       uuidToken,
       itemType,
-      vendor,
+      vendor: vendorName,
       lotNumber,
-      dateOfSupply: dateOfSupply ? new Date(dateOfSupply) : undefined,
+      dateOfSupply: supplyDate ? new Date(supplyDate) : undefined,
       manufactureDate: manufactureDate ? new Date(manufactureDate) : undefined,
       warrantyMonths,
       warrantyStartDate: warrantyStartDate ? new Date(warrantyStartDate) : undefined,
@@ -70,7 +70,7 @@ router.post('/create', authenticateUser, (req, res, next) => {
       qrAccessPassword,
       productImage: productImagePath,
       dynamicData: dynamicData || {},
-      createdBy: req.user.userId
+      createdBy: req.user._id
     });
 
     await item.save();
@@ -337,7 +337,7 @@ router.post('/scan/:token', authenticateUser, validate(qrScanSchema), async (req
     // Create scan log
     const scanLog = new QRScanLog({
       itemId: item._id,
-      scannedBy: req.user.userId,
+      scannedBy: req.user._id,
       location
     });
 
@@ -420,7 +420,7 @@ router.post('/:token/maintenance', authenticateUser, async (req, res) => {
       description,
       status,
       notes,
-      performedBy: req.user.userId,
+      performedBy: req.user._id,
       performedAt: new Date(),
       timestamp: new Date().toISOString()
     };

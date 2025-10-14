@@ -50,7 +50,7 @@ const itemCreateSchema = Joi.object({
     .messages({
       'any.required': 'Item type is required'
     }),
-  vendor: Joi.string()
+  vendorName: Joi.string()
     .trim()
     .optional()
     .allow(''),
@@ -58,7 +58,7 @@ const itemCreateSchema = Joi.object({
     .trim()
     .optional()
     .allow(''),
-  dateOfSupply: Joi.alternatives()
+  supplyDate: Joi.alternatives()
     .try(Joi.string().allow(''), Joi.date())
     .optional(),
   manufactureDate: Joi.alternatives()

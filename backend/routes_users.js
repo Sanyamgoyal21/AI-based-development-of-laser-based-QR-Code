@@ -56,7 +56,7 @@ router.post('/create', authenticateUser, requireAdmin, async (req, res) => {
       phone,
       role,
       isActive: true,
-      createdBy: currentUser.id,
+      createdBy: currentUser._id,
       vendorInfo: role === 'vendor' ? vendorInfo : undefined
     });
 
@@ -111,6 +111,14 @@ router.put('/update/:id', authenticateUser, requireAdmin, async (req, res) => {
       });
     }
 
+    // Prevent admin from managing superadmins (enable/disable, edit)
+    if (currentUser.role === 'admin' && user.role === 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin cannot modify superadmin accounts'
+      });
+    }
+
     // Update fields
     if (fullName) user.fullName = fullName;
     if (email) user.email = email;
@@ -154,6 +162,14 @@ router.put('/change-password/:id', authenticateUser, requireAdmin, async (req, r
       });
     }
 
+    // Prevent admin from changing superadmin password
+    if (currentUser.role === 'admin' && user.role === 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin cannot change superadmin password'
+      });
+    }
+
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedPassword;
@@ -180,7 +196,7 @@ router.delete('/delete/:id', authenticateUser, requireSuperAdmin, async (req, re
     const currentUser = req.user;
 
     // Prevent self-deletion
-    if (id === currentUser.id) {
+    if (id === currentUser._id) {
       return res.status(400).json({
         success: false,
         message: 'Cannot delete your own account'
