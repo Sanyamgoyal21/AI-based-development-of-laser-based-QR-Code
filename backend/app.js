@@ -23,6 +23,20 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 
+// EARLY CORS handling to satisfy preflight before any other middleware
+const FRONTEND_ORIGIN = process.env.BASE_URL || 'http://localhost:5173';
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', FRONTEND_ORIGIN);
+  res.header('Vary', 'Origin');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 // Create directories for file uploads
 const uploadsDir = path.join(__dirname, 'uploads');
 const productImagesDir = path.join(__dirname, 'product-images');

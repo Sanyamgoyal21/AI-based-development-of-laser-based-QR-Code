@@ -5,6 +5,7 @@ class SocketService {
     this.socket = null;
     this.isConnected = false;
     this.listeners = new Map();
+    this.pendingAuth = null;
   }
 
   connect(token) {
@@ -22,6 +23,14 @@ class SocketService {
     this.socket.on('connect', () => {
       console.log('Connected to server:', this.socket.id);
       this.isConnected = true;
+      // Flush pending auth if any
+      if (this.pendingAuth) {
+        try {
+          this.socket.emit('authenticate', this.pendingAuth);
+        } finally {
+          this.pendingAuth = null;
+        }
+      }
     });
 
     this.socket.on('disconnect', () => {
@@ -40,6 +49,9 @@ class SocketService {
   authenticate(userData) {
     if (this.socket && this.isConnected) {
       this.socket.emit('authenticate', userData);
+    } else {
+      // Queue until connect fires
+      this.pendingAuth = userData;
     }
   }
 

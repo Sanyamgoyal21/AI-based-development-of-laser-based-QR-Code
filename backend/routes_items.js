@@ -79,6 +79,26 @@ router.post('/create', authenticateUser, (req, res, next) => {
     const baseUrl = process.env.BASE_URL || 'http://localhost:5173';
     const qrResult = await createQRPNGForToken(uuidToken, baseUrl);
 
+    // Emit only AFTER QR PNG is generated so clients can fetch the file
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to('global').emit('qr_generated', {
+          type: 'qr_generated',
+          itemId: item._id,
+          uuidToken: item.uuidToken,
+          vendor: item.vendor,
+          itemType: item.itemType,
+          location: item.location,
+          qrCode: { filename: `${item.uuidToken}.png` },
+          createdBy: req.user?.username,
+          timestamp: new Date()
+        });
+      }
+    } catch (e) {
+      console.error('Realtime emit qr_generated failed:', e?.message || e);
+    }
+
     res.status(201).json({
       success: true,
       message: 'Item created successfully',

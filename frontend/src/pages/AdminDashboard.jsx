@@ -29,6 +29,7 @@ export default function AdminDashboard() {
   const [generatedQR, setGeneratedQR] = useState(null);
   const [qrGallery, setQrGallery] = useState([]);
   const [qrGalleryUrls, setQrGalleryUrls] = useState({}); // filename -> blob URL
+  const [updatedGalleryIds, setUpdatedGalleryIds] = useState(new Set());
   const [currentLocation, setCurrentLocation] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [qrImageUrl, setQrImageUrl] = useState('');
@@ -492,11 +493,27 @@ export default function AdminDashboard() {
       const response = await authAPI.getProfile();
       if (response.data.success) {
         setCurrentUser(response.data.user);
+        try {
+          localStorage.setItem('userProfile', JSON.stringify(response.data.user));
+        } catch {}
       }
     } catch (error) {
       console.error('Error fetching current user:', error);
     }
   };
+
+  // Initialize currentUser immediately from storage to avoid fallback flicker
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('userProfile');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.username) {
+          setCurrentUser(parsed);
+        }
+      }
+    } catch {}
+  }, []);
 
   // Clear update indicator (green dot)
   const clearUpdateIndicator = () => {
@@ -559,16 +576,50 @@ export default function AdminDashboard() {
       const handleUserConnected = () => {};
       const handleUserDisconnected = () => {};
 
+      const handleQrGenerated = (data) => {
+        if (!data?.itemId) return;
+        setQrGallery(prev => [{
+          _id: data.itemId,
+          uuidToken: data.uuidToken,
+          vendor: data.vendor,
+          itemType: data.itemType,
+          location: data.location,
+          qrCode: { filename: data.qrCode?.filename }
+        }, ...prev]);
+        setUpdatedGalleryIds(prev => new Set([...prev, data.itemId]));
+
+        // Warm the QR image blob URL with retry in case of slight server write delay
+        const filename = data.qrCode?.filename;
+        if (filename) {
+          const tryLoad = async (attempt = 1) => {
+            try {
+              const res = await fetch(`${API_ORIGIN}/qrcodes/${filename}`, { cache: 'reload' });
+              if (!res.ok) throw new Error(`status ${res.status}`);
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              setQrGalleryUrls(prev => ({ ...prev, [filename]: url }));
+            } catch (e) {
+              if (attempt < 5) {
+                setTimeout(() => tryLoad(attempt + 1), 250 * attempt);
+              }
+            }
+          };
+          tryLoad();
+        }
+      };
+
       // Register event listeners
       socketService.onUserUpdated(handleUserUpdated);
       socketService.onUserConnected(handleUserConnected);
       socketService.onUserDisconnected(handleUserDisconnected);
+      socketService.onQRGenerated(handleQrGenerated);
 
       // Cleanup function
       return () => {
         socketService.offUserUpdated(handleUserUpdated);
         socketService.offUserConnected(handleUserConnected);
         socketService.offUserDisconnected(handleUserDisconnected);
+        socketService.offQRGenerated(handleQrGenerated);
       };
     }
   }, [currentUser, activeSection]);
@@ -2207,6 +2258,11 @@ export default function AdminDashboard() {
                   
                   return (
                     <div key={item._id || item.id || index} className="bg-gray-50 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="flex justify-end -mt-2 -mr-2 mb-1">
+                        {updatedGalleryIds.has(item._id || item.id) && (
+                          <span title="Updated just now" className="inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
+                        )}
+                      </div>
                     <div className="text-center">
                       <div className="mb-3">
                           {item.qrCode?.filename && qrGalleryUrls[item.qrCode.filename] ? (
@@ -2327,10 +2383,10 @@ export default function AdminDashboard() {
                 </div>
                 <div className="text-right">
                   <span className="text-sm font-condensed font-medium text-white">
-                    {currentUser ? currentUser.fullName : 'ADMIN'}
+                    {currentUser?.fullName || currentUser?.username || 'Loading...'}
                   </span>
                   <p className="text-xs text-gray-300">
-                    {currentUser ? currentUser.role.toUpperCase() : 'ADMIN'}
+                    {currentUser?.role ? currentUser.role.toUpperCase() : ' '} 
                   </p>
               </div>
               </div>
