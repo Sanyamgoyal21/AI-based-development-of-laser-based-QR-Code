@@ -35,6 +35,7 @@
     "qr": "^0.5.2",
     "qrcode": "^1.5.3",
     "scanner": "^0.0.7",
+    "socket.io": "^4.8.1",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

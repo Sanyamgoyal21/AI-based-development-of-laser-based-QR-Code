@@ -66,6 +66,21 @@ router.post('/create', authenticateUser, requireAdmin, async (req, res) => {
     const userResponse = newUser.toObject();
     delete userResponse.password;
 
+    // Emit real-time update
+    const io = req.app.get('io');
+    if (io) {
+      io.to('global').emit('user_updated', {
+        type: 'user_created',
+        userId: newUser._id,
+        username: newUser.username,
+        fullName: newUser.fullName,
+        role: newUser.role,
+        isActive: newUser.isActive,
+        createdBy: currentUser.username,
+        timestamp: new Date()
+      });
+    }
+
     res.json({
       success: true,
       message: 'User created successfully',
@@ -132,6 +147,21 @@ router.put('/update/:id', authenticateUser, requireAdmin, async (req, res) => {
     // Return user without password
     const userResponse = user.toObject();
     delete userResponse.password;
+
+    // Emit real-time update
+    const io = req.app.get('io');
+    if (io) {
+      io.to('global').emit('user_updated', {
+        type: 'user_updated',
+        userId: user._id,
+        username: user.username,
+        fullName: user.fullName,
+        role: user.role,
+        isActive: user.isActive,
+        updatedBy: currentUser.username,
+        timestamp: new Date()
+      });
+    }
 
     res.json({
       success: true,
@@ -212,6 +242,20 @@ router.delete('/delete/:id', authenticateUser, requireSuperAdmin, async (req, re
     }
 
     await User.findByIdAndDelete(id);
+
+    // Emit real-time update
+    const io = req.app.get('io');
+    if (io) {
+      io.to('global').emit('user_updated', {
+        type: 'user_deleted',
+        userId: id,
+        username: user.username,
+        fullName: user.fullName,
+        role: user.role,
+        deletedBy: currentUser.username,
+        timestamp: new Date()
+      });
+    }
 
     res.json({
       success: true,

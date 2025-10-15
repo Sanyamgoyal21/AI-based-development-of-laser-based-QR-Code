@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { itemsAPI, usersAPI, authAPI, removeAuthToken, API_ORIGIN } from '../services/api';
 import QrScanner from 'qr-scanner';
+import socketService from '../services/socket';
 
 export default function AdminDashboard() {
   const [items, setItems] = useState([]);
@@ -11,7 +12,7 @@ export default function AdminDashboard() {
   const [qrFormData, setQrFormData] = useState({
     vendorName: '',
     lotNumber: '',
-     itemType: 'Elastic Rail Clip',
+    itemType: 'Elastic Rail Clip',
     warrantyStartDate: '',
     warrantyEndDate: '',
     manufactureDate: '',
@@ -50,6 +51,9 @@ export default function AdminDashboard() {
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  
+  // Real-time update states (row-level markers only)
+  const [updatedUserIds, setUpdatedUserIds] = useState(new Set());
   const [userFormData, setUserFormData] = useState({
     username: '',
     password: '',
@@ -494,6 +498,12 @@ export default function AdminDashboard() {
     }
   };
 
+  // Clear update indicator (green dot)
+  const clearUpdateIndicator = () => {
+    setShowUpdateIndicator(false);
+    setNewUpdateCount(0);
+  };
+
   useEffect(() => {
     fetchItems();
     fetchQRGallery();
@@ -506,6 +516,62 @@ export default function AdminDashboard() {
       fetchUsers();
     }
   }, [activeSection]);
+
+  // Socket.IO setup for real-time updates
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token && currentUser) {
+      // Connect to Socket.IO
+      socketService.connect(token);
+      
+      // Authenticate with user data
+      socketService.authenticate({
+        userId: currentUser._id,
+        username: currentUser.username,
+        role: currentUser.role
+      });
+
+      // Set up event listeners
+      const handleUserUpdated = (data) => {
+        // Mark updated row(s) locally without modal
+        if (data?.userId) {
+          setUpdatedUserIds(prev => new Set([...prev, data.userId]));
+        }
+        if (activeSection === 'manage-users') {
+          if (data.type === 'user_created') {
+            setUsers(prev => [{
+              _id: data.userId,
+              username: data.username,
+              fullName: data.fullName,
+              role: data.role,
+              isActive: data.isActive
+            }, ...prev]);
+          } else if (data.type === 'user_updated') {
+            setUsers(prev => prev.map(user => 
+              user._id === data.userId ? { ...user, username: data.username, fullName: data.fullName, role: data.role, isActive: data.isActive } : user
+            ));
+          } else if (data.type === 'user_deleted') {
+            setUsers(prev => prev.filter(user => user._id !== data.userId));
+          }
+        }
+      };
+
+      const handleUserConnected = () => {};
+      const handleUserDisconnected = () => {};
+
+      // Register event listeners
+      socketService.onUserUpdated(handleUserUpdated);
+      socketService.onUserConnected(handleUserConnected);
+      socketService.onUserDisconnected(handleUserDisconnected);
+
+      // Cleanup function
+      return () => {
+        socketService.offUserUpdated(handleUserUpdated);
+        socketService.offUserConnected(handleUserConnected);
+        socketService.offUserDisconnected(handleUserDisconnected);
+      };
+    }
+  }, [currentUser, activeSection]);
 
   // Build blob URLs for gallery images
   useEffect(() => {
@@ -795,8 +861,17 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody>
                   {users.map((user) => (
-                    <tr key={user.id} className="bg-white border-b hover:bg-gray-50">
-                      <td className="px-6 py-4 font-medium text-gray-900">{user.username}</td>
+                    <tr key={user._id || user.id} className="bg-white border-b hover:bg-gray-50">
+                      <td className="px-6 py-4 font-medium text-gray-900">
+                        <span className="inline-flex items-center space-x-2">
+                          <span>{user.username}</span>
+                          {updatedUserIds.has(user._id || user.id) && (
+                            <span title="Updated just now"
+                                  className="inline-block h-2.5 w-2.5 rounded-full bg-green-500"
+                            />
+                          )}
+                        </span>
+                      </td>
                       <td className="px-6 py-4">{user.fullName}</td>
                       <td className="px-6 py-4">{user.email || '-'}</td>
                       <td className="px-6 py-4">{user.phone || '-'}</td>
@@ -1083,6 +1158,8 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* Real-time Updates Modal removed as per requirement */}
       </div>
     );
   };
@@ -2240,6 +2317,8 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              {/* Real-time Update Indicator removed as per requirement */}
+              
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
                     <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">

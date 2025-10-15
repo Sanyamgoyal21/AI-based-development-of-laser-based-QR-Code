@@ -6,6 +6,8 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
+const http = require('http');
+const { Server } = require('socket.io');
 require('dotenv').config({ path: './config.env' });
 
 // Import database connection
@@ -215,12 +217,106 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
+// Create HTTP server
 const PORT = process.env.PORT || 8000;
-const server = app.listen(PORT, () => {
+const server = http.createServer(app);
+
+// Initialize Socket.IO
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST"]
+  }
+});
+
+// Store connected users
+const connectedUsers = new Map();
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log(`User connected: ${socket.id}`);
+
+  // Handle user authentication and join room
+  socket.on('authenticate', (userData) => {
+    const { userId, username, role } = userData;
+    connectedUsers.set(socket.id, { userId, username, role, socketId: socket.id });
+    
+    // Join user-specific room
+    socket.join(`user_${userId}`);
+    
+    // Join role-based rooms
+    socket.join(`role_${role}`);
+    
+    // Join global room for general updates
+    socket.join('global');
+    
+    console.log(`User ${username} (${role}) authenticated and joined rooms`);
+    
+    // Notify other users about new connection
+    socket.to('global').emit('user_connected', {
+      userId,
+      username,
+      role,
+      timestamp: new Date()
+    });
+  });
+
+  // Handle user disconnection
+  socket.on('disconnect', () => {
+    const userData = connectedUsers.get(socket.id);
+    if (userData) {
+      console.log(`User ${userData.username} disconnected`);
+      
+      // Notify other users about disconnection
+      socket.to('global').emit('user_disconnected', {
+        userId: userData.userId,
+        username: userData.username,
+        role: userData.role,
+        timestamp: new Date()
+      });
+      
+      connectedUsers.delete(socket.id);
+    }
+  });
+
+  // Handle real-time updates
+  socket.on('user_updated', (data) => {
+    // Broadcast user update to all connected users
+    socket.to('global').emit('user_updated', {
+      ...data,
+      timestamp: new Date(),
+      updatedBy: connectedUsers.get(socket.id)?.username || 'Unknown'
+    });
+  });
+
+  socket.on('qr_generated', (data) => {
+    // Broadcast QR generation to all users
+    socket.to('global').emit('qr_generated', {
+      ...data,
+      timestamp: new Date(),
+      generatedBy: connectedUsers.get(socket.id)?.username || 'Unknown'
+    });
+  });
+
+  socket.on('qr_scanned', (data) => {
+    // Broadcast QR scan to all users
+    socket.to('global').emit('qr_scanned', {
+      ...data,
+      timestamp: new Date(),
+      scannedBy: connectedUsers.get(socket.id)?.username || 'Unknown'
+    });
+  });
+});
+
+// Make io available to routes
+app.set('io', io);
+
+// Start server
+server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
+  console.log(`🔌 Socket.IO enabled for real-time updates`);
 });
 
 // Graceful shutdown
