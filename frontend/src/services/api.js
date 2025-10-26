@@ -84,3 +84,12 @@ export const usersAPI = {
   changePassword: (id, newPassword) => api.put(`/users/change-password/${id}`, { newPassword }),
   getById: (id) => api.get(`/users/${id}`)
 };
+
+export const chatAPI = {
+  getAvailableUsers: () => api.get('/chat/available-users'),
+  getConversations: () => api.get('/chat/conversations'),
+  getMessages: (userId) => api.get(`/chat/messages/${userId}`),
+  sendMessage: (receiverUsername, message) => api.post('/chat/send', { receiverUsername, message }),
+  getUnreadCount: () => api.get('/chat/unread-count'),
+  searchUsers: (query) => api.get('/chat/search-users', { params: { query } })
+};

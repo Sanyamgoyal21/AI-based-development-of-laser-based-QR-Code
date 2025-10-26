@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { itemsAPI, usersAPI, authAPI, removeAuthToken, API_ORIGIN } from '../services/api';
+import { itemsAPI, usersAPI, authAPI, chatAPI, removeAuthToken, API_ORIGIN } from '../services/api';
 import QrScanner from 'qr-scanner';
 import socketService from '../services/socket';
 
@@ -72,6 +72,18 @@ export default function AdminDashboard() {
   
   // Ref for file input
   const fileInputRef = useRef(null);
+  
+  // Chat states
+  const [chatOpen, setChatOpen] = useState(false);
+  const [conversations, setConversations] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [chatLoading, setChatLoading] = useState(false);
+  const messagesEndRef = useRef(null);
 
   const fetchItems = async () => {
     try {
@@ -525,6 +537,7 @@ export default function AdminDashboard() {
     fetchItems();
     fetchQRGallery();
     fetchCurrentUser();
+    fetchUnreadCount();
   }, []);
 
   // Fetch users when manage-users section is active
@@ -613,6 +626,7 @@ export default function AdminDashboard() {
       socketService.onUserConnected(handleUserConnected);
       socketService.onUserDisconnected(handleUserDisconnected);
       socketService.onQRGenerated(handleQrGenerated);
+      socketService.on('new_message', handleNewMessage);
 
       // Cleanup function
       return () => {
@@ -620,9 +634,17 @@ export default function AdminDashboard() {
         socketService.offUserConnected(handleUserConnected);
         socketService.offUserDisconnected(handleUserDisconnected);
         socketService.offQRGenerated(handleQrGenerated);
+        socketService.off('new_message', handleNewMessage);
       };
     }
   }, [currentUser, activeSection]);
+
+  // Auto-scroll chat messages to bottom
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   // Build blob URLs for gallery images
   useEffect(() => {
@@ -712,6 +734,101 @@ export default function AdminDashboard() {
   const handleLogout = () => {
     removeAuthToken();
     window.location.href = '/login';
+  };
+
+  // Chat functions
+  const fetchUnreadCount = async () => {
+    try {
+      const response = await chatAPI.getUnreadCount();
+      if (response.data.success) {
+        setUnreadCount(response.data.count);
+      }
+    } catch (err) {
+      console.error('Error fetching unread count:', err);
+    }
+  };
+
+  const fetchConversations = async () => {
+    try {
+      const response = await chatAPI.getConversations();
+      if (response.data.success) {
+        setConversations(response.data.conversations);
+      }
+    } catch (err) {
+      console.error('Error fetching conversations:', err);
+    }
+  };
+
+  const fetchMessages = async (userId) => {
+    try {
+      setChatLoading(true);
+      const response = await chatAPI.getMessages(userId);
+      if (response.data.success) {
+        setMessages(response.data.messages);
+      }
+    } catch (err) {
+      console.error('Error fetching messages:', err);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !selectedUser) return;
+
+    try {
+      const response = await chatAPI.sendMessage(selectedUser.username, newMessage);
+      if (response.data.success) {
+        setMessages([...messages, response.data.chatMessage]);
+        setNewMessage('');
+        fetchUnreadCount();
+      }
+    } catch (err) {
+      console.error('Error sending message:', err);
+      alert(err.response?.data?.message || 'Failed to send message');
+    }
+  };
+
+  const handleUserSearch = async (query) => {
+    setSearchQuery(query);
+    if (query.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      const response = await chatAPI.searchUsers(query);
+      if (response.data.success) {
+        setSearchResults(response.data.users);
+      }
+    } catch (err) {
+      console.error('Error searching users:', err);
+    }
+  };
+
+  const handleSelectUser = async (user) => {
+    setSelectedUser(user);
+    setSearchQuery('');
+    setSearchResults([]);
+    await fetchMessages(user.id);
+  };
+
+  const handleNewMessage = (data) => {
+    // Update unread count
+    fetchUnreadCount();
+    
+    // If the message is from the currently selected user, add it to messages
+    if (selectedUser && data.sender.id === selectedUser.id) {
+      setMessages(prev => [...prev, data]);
+    }
+    
+    // Update conversations
+    fetchConversations();
+  };
+
+  const handleChatOpen = () => {
+    setChatOpen(true);
+    fetchConversations();
   };
 
   const validateDates = (formData) => {
@@ -2391,6 +2508,17 @@ export default function AdminDashboard() {
               </div>
               </div>
               <button
+                onClick={handleChatOpen}
+                className="relative px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors"
+              >
+                💬 Chat
+                {unreadCount > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+              <button
                 onClick={() => {
                   removeAuthToken();
                   window.location.href = '/login';
@@ -2567,6 +2695,139 @@ export default function AdminDashboard() {
         </div>
         </div>
       </div>
+
+      {/* Chat Modal */}
+      {chatOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-full max-w-4xl h-[600px] flex relative">
+            {/* Left Sidebar - Conversations */}
+            <div className="w-1/3 border-r flex flex-col">
+              <div className="p-4 border-b">
+                <h3 className="text-lg font-semibold mb-2">Messages</h3>
+                <input
+                  type="text"
+                  placeholder="Search users..."
+                  value={searchQuery}
+                  onChange={(e) => handleUserSearch(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                />
+                
+                {searchResults.length > 0 && (
+                  <div className="mt-2 max-h-40 overflow-y-auto border rounded">
+                    {searchResults.map((user) => (
+                      <button
+                        key={user.id}
+                        onClick={() => handleSelectUser(user)}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm"
+                      >
+                        <p className="font-semibold">{user.username}</p>
+                        <p className="text-xs text-gray-600">{user.fullName} ({user.role})</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex-1 overflow-y-auto">
+                {conversations.map((conv) => (
+                  <button
+                    key={conv.userId}
+                    onClick={() => handleSelectUser(conv)}
+                    className={`w-full text-left px-4 py-3 border-b hover:bg-gray-50 ${
+                      selectedUser?.id === conv.userId ? 'bg-blue-50' : ''
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-semibold">{conv.username}</p>
+                        <p className="text-xs text-gray-600">{conv.fullName}</p>
+                        <p className="text-sm text-gray-500 truncate">{conv.lastMessage}</p>
+                      </div>
+                      {conv.unreadCount > 0 && (
+                        <span className="bg-blue-600 text-white text-xs rounded-full px-2 py-1">
+                          {conv.unreadCount}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Right Side - Chat Area */}
+            <div className="flex-1 flex flex-col">
+              {selectedUser ? (
+                <>
+                  <div className="p-4 border-b">
+                    <h3 className="font-semibold">{selectedUser.username}</h3>
+                    <p className="text-sm text-gray-600">{selectedUser.fullName} ({selectedUser.role})</p>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {chatLoading ? (
+                      <div className="text-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                      </div>
+                    ) : (
+                      messages.map((msg) => (
+                        <div
+                          key={msg.id}
+                          className={`flex ${msg.sender.id === currentUser?.id ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div
+                            className={`max-w-[70%] rounded-lg px-4 py-2 ${
+                              msg.sender.id === currentUser?.id
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-200 text-gray-800'
+                            }`}
+                          >
+                            <p>{msg.message}</p>
+                            <p className="text-xs mt-1 opacity-70">
+                              {new Date(msg.createdAt).toLocaleTimeString()}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                  
+                  <div className="p-4 border-t">
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                        placeholder="Type a message..."
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                      <button
+                        onClick={handleSendMessage}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-gray-500">
+                  Select a user to start chatting
+                </div>
+              )}
+            </div>
+
+            {/* Close button */}
+            <button
+              onClick={() => setChatOpen(false)}
+              className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-full w-8 h-8 flex items-center justify-center"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

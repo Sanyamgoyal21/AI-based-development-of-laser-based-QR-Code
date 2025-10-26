@@ -144,6 +144,25 @@ class SocketService {
     }
   }
 
+  // Generic event listeners (for custom events like chat)
+  on(event, callback) {
+    if (this.socket) {
+      this.socket.on(event, callback);
+    }
+  }
+
+  off(event, callback) {
+    if (this.socket) {
+      this.socket.off(event, callback);
+    }
+  }
+
+  emit(event, data) {
+    if (this.socket && this.isConnected) {
+      this.socket.emit(event, data);
+    }
+  }
+
   getSocket() {
     return this.socket;
   }

@@ -16,6 +16,7 @@ const connectDB = require('./database');
 // Import routes
 const authRoutes = require('./routes_auth');
 const itemRoutes = require('./routes_items');
+const chatRoutes = require('./routes_chat');
 
 // Initialize Express app
 const app = express();
@@ -153,6 +154,7 @@ app.use('/product-images', (req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/users', require('./routes_users'));
+app.use('/api/chat', chatRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

@@ -165,13 +165,47 @@ const qrScanLogSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Chat Message Schema
+const chatMessageSchema = new mongoose.Schema({
+  sender: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  receiver: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  message: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  isRead: {
+    type: Boolean,
+    default: false
+  },
+  readAt: {
+    type: Date
+  }
+}, {
+  timestamps: true
+});
+
+// Index for faster queries
+chatMessageSchema.index({ sender: 1, receiver: 1, createdAt: -1 });
+chatMessageSchema.index({ receiver: 1, isRead: 1 });
+
 // Create models
 const User = mongoose.model('User', userSchema);
 const Item = mongoose.model('Item', itemSchema);
 const QRScanLog = mongoose.model('QRScanLog', qrScanLogSchema);
+const ChatMessage = mongoose.model('ChatMessage', chatMessageSchema);
 
 module.exports = {
   User,
   Item,
-  QRScanLog
+  QRScanLog,
+  ChatMessage
 };
