@@ -1,12 +1,26 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { publicAPI } from '../services/api';
 
 export default function PublicDashboard() {
   const navigate = useNavigate();
   const [faultType, setFaultType] = useState('');
   const [location, setLocation] = useState('');
+  const [incidentLocation, setIncidentLocation] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [photo, setPhoto] = useState(null);
+  const [geo, setGeo] = useState({ lat: null, lng: null });
+  const [incidentGeo, setIncidentGeo] = useState({ lat: null, lng: null });
+
+  const requestGeolocation = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setGeo({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   const handleSubmitFault = async (e) => {
     e.preventDefault();
@@ -15,16 +29,41 @@ export default function PublicDashboard() {
       return;
     }
 
-    setSubmitting(true);
-    // Simulate submission
-    setTimeout(() => {
+    try {
+      setSubmitting(true);
+      const form = new FormData();
+      form.append('faultType', faultType);
+      form.append('description', description);
+      if (location) form.append('locationText', location);
+      if (geo.lat && geo.lng) {
+        form.append('geoLat', String(geo.lat));
+        form.append('geoLng', String(geo.lng));
+      }
+      if (incidentLocation) form.append('incidentLocationText', incidentLocation);
+      if (incidentGeo.lat && incidentGeo.lng) {
+        form.append('incidentLat', String(incidentGeo.lat));
+        form.append('incidentLng', String(incidentGeo.lng));
+      }
+      // optional phone and logged in user id if available
+      const phone = localStorage.getItem('publicReporterPhone');
+      if (phone) form.append('reporterPhone', phone);
+      const reporterUserId = localStorage.getItem('reporterUserId');
+      if (reporterUserId) form.append('reporterUserId', reporterUserId);
+      if (photo) form.append('photo', photo);
+
+      const res = await publicAPI.submitFaultReport(form);
+      if (res.data.success) {
+        alert('Fault report submitted successfully! Reference ID: ' + res.data.reportId);
+        setFaultType('');
+        setLocation('');
+        setDescription('');
+        setPhoto(null);
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to submit report');
+    } finally {
       setSubmitting(false);
-      alert('Fault report submitted successfully! Reference ID: RF' + Date.now());
-      // Reset form
-      setFaultType('');
-      setLocation('');
-      setDescription('');
-    }, 1500);
+    }
   };
 
   const handleBackToHome = () => {
@@ -145,7 +184,7 @@ export default function PublicDashboard() {
             {/* Location */}
             <div>
               <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-2">
-                Location (Optional)
+                Your Current Location (auto)
               </label>
               <input
                 id="location"
@@ -153,8 +192,49 @@ export default function PublicDashboard() {
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., Between Station A and Station B, Km 45"
+                placeholder="Optional landmark for your current location"
               />
+              <div className="mt-2 flex items-center gap-3 text-sm text-gray-600">
+                <button type="button" onClick={requestGeolocation} className="px-3 py-1 bg-blue-600 text-white rounded">
+                  Use Current Location
+                </button>
+                {geo.lat && geo.lng && (
+                  <span>Lat: {geo.lat.toFixed(5)}, Lng: {geo.lng.toFixed(5)}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Incident Location */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Incident Location (pick on map)
+              </label>
+              <input
+                type="text"
+                value={incidentLocation}
+                onChange={(e) => setIncidentLocation(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Describe incident location (station names/km marker)"
+              />
+              <div className="mt-2 flex items-center gap-3 text-sm text-gray-600">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Fallback: use browser geolocation for incident too if user stands at incident
+                    if (!navigator.geolocation) return;
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => setIncidentGeo({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+                    );
+                  }}
+                  className="px-3 py-1 bg-green-600 text-white rounded"
+                >
+                  Use My Location as Incident
+                </button>
+                {incidentGeo.lat && incidentGeo.lng && (
+                  <span>Lat: {incidentGeo.lat.toFixed(5)}, Lng: {incidentGeo.lng.toFixed(5)}</span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">(Map picker can be integrated here; currently captures coordinates via browser.)</p>
             </div>
 
             {/* Description */}
@@ -170,6 +250,18 @@ export default function PublicDashboard() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Please provide detailed description of the fault observed..."
                 required
+              />
+            </div>
+
+            {/* Photo Upload */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Photo (optional)</label>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => setPhoto(e.target.files?.[0] || null)}
+                className="w-full"
               />
             </div>
 

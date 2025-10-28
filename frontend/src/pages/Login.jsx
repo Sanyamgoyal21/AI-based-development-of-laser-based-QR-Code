@@ -24,11 +24,12 @@ export default function Login() {
         if (userRole === 'superadmin' || userRole === 'admin') {
           navigate('/admin');
         } else if (userRole === 'employee') {
-          navigate('/worker');
+          // Employees use the streamlined AdminDashboard view
+          navigate('/admin');
         } else if (userRole === 'vendor') {
           navigate('/vendor');
         } else {
-          navigate('/worker'); // Default fallback
+          navigate('/admin'); // Default fallback
         }
       } else {
         setError(response.data.message || 'Login failed');

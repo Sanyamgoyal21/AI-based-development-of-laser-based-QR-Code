@@ -52,6 +52,10 @@ export default function AdminDashboard() {
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  // Derived permission helpers
+  const canManageUsers = currentUser?.role === 'admin' || currentUser?.role === 'superadmin';
+  const canSeeReports = currentUser?.role === 'admin' || currentUser?.role === 'superadmin';
+  const canSeeQrGallery = currentUser?.role === 'admin' || currentUser?.role === 'superadmin';
   
   // Real-time update states (row-level markers only)
   const [updatedUserIds, setUpdatedUserIds] = useState(new Set());
@@ -84,6 +88,10 @@ export default function AdminDashboard() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [chatLoading, setChatLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const chatFileInputRef = useRef(null);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(null);
 
   const fetchItems = async () => {
     try {
@@ -765,6 +773,9 @@ export default function AdminDashboard() {
       const response = await chatAPI.getMessages(userId);
       if (response.data.success) {
         setMessages(response.data.messages);
+        // Refresh conversations to update unread counts
+        await fetchConversations();
+        await fetchUnreadCount();
       }
     } catch (err) {
       console.error('Error fetching messages:', err);
@@ -774,19 +785,37 @@ export default function AdminDashboard() {
   };
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedUser) return;
+    if ((!newMessage.trim() && selectedFiles.length === 0) || !selectedUser) return;
 
     try {
-      const response = await chatAPI.sendMessage(selectedUser.username, newMessage);
+      const response = await chatAPI.sendMessage(
+        selectedUser.username, 
+        newMessage, 
+        {
+          files: selectedFiles,
+          repliedTo: replyingTo?.id
+        }
+      );
       if (response.data.success) {
         setMessages([...messages, response.data.chatMessage]);
         setNewMessage('');
+        setSelectedFiles([]);
+        setReplyingTo(null);
         fetchUnreadCount();
       }
     } catch (err) {
       console.error('Error sending message:', err);
       alert(err.response?.data?.message || 'Failed to send message');
     }
+  };
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    setSelectedFiles([...selectedFiles, ...files]);
+  };
+
+  const removeFile = (index) => {
+    setSelectedFiles(selectedFiles.filter((_, i) => i !== index));
   };
 
   const handleUserSearch = async (query) => {
@@ -810,25 +839,69 @@ export default function AdminDashboard() {
     setSelectedUser(user);
     setSearchQuery('');
     setSearchResults([]);
-    await fetchMessages(user.id);
+    // conversations use userId, search results use id
+    const userId = user.userId || user.id;
+    await fetchMessages(userId);
   };
 
   const handleNewMessage = (data) => {
+    console.log('New message received:', data);
+    
+    // Play beep sound for new message
+    playNotificationSound();
+    
     // Update unread count
     fetchUnreadCount();
     
-    // If the message is from the currently selected user, add it to messages
-    if (selectedUser && data.sender.id === selectedUser.id) {
-      setMessages(prev => [...prev, data]);
-    }
-    
-    // Update conversations
+    // Always update conversations to show new message preview
     fetchConversations();
+    
+    // If the message is from the currently selected user, add it to messages
+    const selectedUserId = selectedUser?.id || selectedUser?.userId;
+    if (selectedUser && data.sender.id === selectedUserId) {
+      setMessages(prev => {
+        // Check if message already exists to avoid duplicates
+        const exists = prev.some(msg => msg.id === data.id);
+        if (exists) return prev;
+        return [...prev, data];
+      });
+      // Scroll to bottom
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
   };
 
-  const handleChatOpen = () => {
+  const playNotificationSound = () => {
+    try {
+      // Create a simple beep sound using AudioContext
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800; // Beep frequency
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.1);
+    } catch (e) {
+      console.log('Could not play notification sound:', e);
+    }
+  };
+
+  const handleChatOpen = async () => {
     setChatOpen(true);
-    fetchConversations();
+    await fetchConversations();
+    // Auto-select the first conversation (most recent)
+    if (conversations.length > 0 && !selectedUser) {
+      await handleSelectUser(conversations[0]);
+    }
   };
 
   const validateDates = (formData) => {
@@ -2627,18 +2700,19 @@ export default function AdminDashboard() {
                 </svg>
                 Faults Map
               </a>
-                <a 
+              <a 
                   href="#" 
                   onClick={(e) => {
                     e.preventDefault();
                     setActiveTab('reports');
                     setActiveSection('dashboard'); // Clear manage-users section
                   }}
-                  className={`flex items-center px-4 py-2 text-sm font-condensed font-medium rounded-lg ${
-                    activeTab === 'reports' && activeSection !== 'manage-users'
-                      ? 'text-white bg-blue-600' 
-                      : 'text-gray-300 hover:text-white hover:bg-gray-700'
-                  }`}
+                className={`flex items-center px-4 py-2 text-sm font-condensed font-medium rounded-lg ${
+                  activeTab === 'reports' && activeSection !== 'manage-users'
+                    ? 'text-white bg-blue-600' 
+                    : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                }`}
+                style={{ display: canSeeReports ? 'flex' : 'none' }}
                 >
                 <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2H6zm1 2a1 1 0 000 2h6a1 1 0 100-2H7zm6 7a1 1 0 011 1v3a1 1 0 11-2 0v-3a1 1 0 011-1zm-3 3a1 1 0 100 2h.01a1 1 0 100-2H10zm-4 1a1 1 0 011-1h.01a1 1 0 110 2H7a1 1 0 01-1-1zm1-4a1 1 0 100 2h.01a1 1 0 100-2H7zm2 0a1 1 0 100 2h.01a1 1 0 100-2H9zm2 0a1 1 0 100 2h.01a1 1 0 100-2h-.01z" clipRule="evenodd" />
@@ -2657,6 +2731,7 @@ export default function AdminDashboard() {
                     ? 'text-white bg-blue-600' 
                     : 'text-gray-300 hover:text-white hover:bg-gray-700'
                 }`}
+                style={{ display: canSeeQrGallery ? 'flex' : 'none' }}
               >
                 <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
@@ -2665,7 +2740,7 @@ export default function AdminDashboard() {
               </a>
               
               {/* Manage Users - Only for admin and superadmin */}
-              {currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin') && (
+              {canManageUsers && (
                 <a
                   href="#"
                   onClick={(e) => {
@@ -2734,7 +2809,7 @@ export default function AdminDashboard() {
                     key={conv.userId}
                     onClick={() => handleSelectUser(conv)}
                     className={`w-full text-left px-4 py-3 border-b hover:bg-gray-50 ${
-                      selectedUser?.id === conv.userId ? 'bg-blue-50' : ''
+                      (selectedUser?.id || selectedUser?.userId) === conv.userId ? 'bg-blue-50' : ''
                     }`}
                   >
                     <div className="flex justify-between items-start">
@@ -2781,10 +2856,98 @@ export default function AdminDashboard() {
                                 : 'bg-gray-200 text-gray-800'
                             }`}
                           >
-                            <p>{msg.message}</p>
-                            <p className="text-xs mt-1 opacity-70">
-                              {new Date(msg.createdAt).toLocaleTimeString()}
-                            </p>
+                            {msg.repliedTo && (
+                              <div className="mb-2 p-2 bg-black/10 rounded text-xs border-l-2 border-current">
+                                <p className="font-semibold">{msg.repliedTo.sender?.username || 'User'}</p>
+                                <p className="truncate">{msg.repliedTo.message}</p>
+                              </div>
+                            )}
+                            
+                            {msg.message && <p>{msg.message}</p>}
+                            
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <div className="mt-2 space-y-2">
+                                {msg.attachments.map((att, idx) => (
+                                  <div key={idx}>
+                                    {att.mimetype?.startsWith('image/') ? (
+                                      <div className="relative">
+                                        {(() => {
+                                          // Extract just filename from path (handle both old full paths and new filenames)
+                                          const getFileUrl = (filepath) => {
+                                            if (!filepath) return att.filename;
+                                            // If it's a full path, extract just the filename
+                                            if (filepath.includes('/') || filepath.includes('\\')) {
+                                              return filepath.split(/[/\\]/).pop();
+                                            }
+                                            return filepath;
+                                          };
+                                          const fileUrl = getFileUrl(att.filepath);
+                                          return (
+                                            <>
+                                              <a 
+                                                href={`http://localhost:8000/uploads/chat/${fileUrl}`}
+                                                download={att.filename}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                              >
+                                                <img 
+                                                  src={`http://localhost:8000/uploads/chat/${fileUrl}`} 
+                                                  alt={att.filename}
+                                                  className="max-w-xs rounded-lg hover:opacity-90 cursor-pointer"
+                                                />
+                                              </a>
+                                              <span className="text-xs text-gray-300 block mt-1">{att.filename}</span>
+                                            </>
+                                          );
+                                        })()}
+                                      </div>
+                                    ) : (
+                                      <a 
+                                        href={`http://localhost:8000/uploads/chat/${att.filepath ? att.filepath.split(/[/\\]/).pop() : att.filename}`}
+                                        download={att.filename}
+                                        className="flex items-center space-x-2 underline p-2 bg-black/20 rounded"
+                                      >
+                                        <span>📎 {att.filename}</span>
+                                      </a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {msg.reactions && msg.reactions.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {msg.reactions.map((reaction, idx) => (
+                                  <span key={idx} className="bg-black/20 px-2 py-1 rounded text-xs">
+                                    {reaction.emoji}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            
+                            <div className="flex items-center justify-between mt-1">
+                              <p className="text-xs opacity-70">
+                                {new Date(msg.createdAt).toLocaleTimeString()}
+                              </p>
+                              {msg.isPriority && (
+                                <span className="text-xs">⭐ Priority</span>
+                              )}
+                            </div>
+                            
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                onClick={() => setShowEmojiPicker(msg.id)}
+                                className="text-xs hover:underline"
+                              >
+                                😊 React
+                              </button>
+                              <button
+                                onClick={() => setReplyingTo(msg)}
+                                className="text-xs hover:underline"
+                              >
+                                ↪️ Reply
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ))
@@ -2792,8 +2955,56 @@ export default function AdminDashboard() {
                     <div ref={messagesEndRef} />
                   </div>
                   
+                  {replyingTo && (
+                    <div className="px-4 py-2 bg-blue-50 border-t border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm">
+                          <span className="font-semibold">Replying to {replyingTo.sender?.username}</span>
+                          <p className="text-gray-600 truncate">{replyingTo.message}</p>
+                        </div>
+                        <button
+                          onClick={() => setReplyingTo(null)}
+                          className="text-gray-500 hover:text-gray-700"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {selectedFiles.length > 0 && (
+                    <div className="px-4 py-2 bg-gray-100 border-t">
+                      <div className="flex flex-wrap gap-2">
+                        {selectedFiles.map((file, idx) => (
+                          <div key={idx} className="flex items-center space-x-2 bg-white px-2 py-1 rounded border">
+                            <span className="text-xs">{file.name}</span>
+                            <button
+                              onClick={() => removeFile(idx)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="p-4 border-t">
                     <div className="flex space-x-2">
+                      <input
+                        ref={chatFileInputRef}
+                        type="file"
+                        multiple
+                        onChange={handleFileSelect}
+                        style={{ display: 'none' }}
+                      />
+                      <button
+                        onClick={() => chatFileInputRef.current?.click()}
+                        className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                      >
+                        📎
+                      </button>
                       <input
                         type="text"
                         value={newMessage}

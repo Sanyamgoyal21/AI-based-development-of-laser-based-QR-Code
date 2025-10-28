@@ -49,11 +49,10 @@ function App() {
               isAuthenticated ? <AdminDashboard /> : <Navigate to="/login" replace />
             } 
           />
+          {/* Redirect legacy worker route to admin view for employees */}
           <Route 
             path="/worker" 
-            element={
-              isAuthenticated ? <WorkerDashboard /> : <Navigate to="/login" replace />
-            } 
+            element={<Navigate to="/admin" replace />} 
           />
           <Route 
             path="/vendor" 

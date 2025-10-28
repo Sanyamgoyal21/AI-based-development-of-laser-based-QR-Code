@@ -17,6 +17,7 @@ const connectDB = require('./database');
 const authRoutes = require('./routes_auth');
 const itemRoutes = require('./routes_items');
 const chatRoutes = require('./routes_chat');
+const publicRoutes = require('./routes_public');
 
 // Initialize Express app
 const app = express();
@@ -150,11 +151,34 @@ app.use('/product-images', (req, res, next) => {
   next();
 }, express.static(path.join(__dirname, 'product-images')));
 
+// Static file serving for chat uploads
+app.use('/uploads/chat', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', process.env.BASE_URL || 'http://localhost:5173');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  res.header('Cache-Control', 'public, max-age=31536000');
+  next();
+}, express.static(path.join(__dirname, 'uploads', 'chat')));
+
+// Static file serving for public uploads
+app.use('/uploads/public', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', process.env.BASE_URL || 'http://localhost:5173');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  res.header('Cache-Control', 'public, max-age=31536000');
+  next();
+}, express.static(path.join(__dirname, 'uploads', 'public')));
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/users', require('./routes_users'));
 app.use('/api/chat', chatRoutes);
+app.use('/api/public', publicRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

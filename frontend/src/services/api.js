@@ -89,7 +89,40 @@ export const chatAPI = {
   getAvailableUsers: () => api.get('/chat/available-users'),
   getConversations: () => api.get('/chat/conversations'),
   getMessages: (userId) => api.get(`/chat/messages/${userId}`),
-  sendMessage: (receiverUsername, message) => api.post('/chat/send', { receiverUsername, message }),
+  sendMessage: (receiverUsername, message, options = {}) => {
+    const { files, messageType, isPriority, repliedTo } = options;
+    const formData = new FormData();
+    formData.append('receiverUsername', receiverUsername);
+    if (message) formData.append('message', message);
+    if (messageType) formData.append('messageType', messageType);
+    if (isPriority) formData.append('isPriority', isPriority);
+    if (repliedTo) formData.append('repliedTo', repliedTo);
+    
+    if (files && files.length > 0) {
+      Array.from(files).forEach((file, index) => {
+        formData.append('files', file);
+      });
+    }
+    
+    return api.post('/chat/send', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
   getUnreadCount: () => api.get('/chat/unread-count'),
-  searchUsers: (query) => api.get('/chat/search-users', { params: { query } })
+  searchUsers: (query) => api.get('/chat/search-users', { params: { query } }),
+  addReaction: (messageId, emoji) => api.post(`/chat/reaction/${messageId}`, { emoji }),
+  removeReaction: (messageId, emoji) => api.delete(`/chat/reaction/${messageId}/${emoji}`),
+  getChatFile: (filename) => {
+    const token = getAuthToken();
+    return `${API_ORIGIN}/api/chat/file/${filename}?token=${token}`;
+  }
+};
+
+// Public APIs
+export const publicAPI = {
+  submitFaultReport: (formData) => api.post('/public/fault-report', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
 };

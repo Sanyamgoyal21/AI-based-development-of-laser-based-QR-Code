@@ -179,15 +179,44 @@ const chatMessageSchema = new mongoose.Schema({
   },
   message: {
     type: String,
-    required: true,
     trim: true
   },
+  messageType: {
+    type: String,
+    enum: ['text', 'file', 'image', 'video', 'document', 'location'],
+    default: 'text'
+  },
+  attachments: [{
+    filename: String,
+    filepath: String,
+    mimetype: String,
+    size: Number
+  }],
   isRead: {
     type: Boolean,
     default: false
   },
   readAt: {
     type: Date
+  },
+  reactions: [{
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    emoji: String,
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  isPriority: {
+    type: Boolean,
+    default: false
+  },
+  repliedTo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ChatMessage'
   }
 }, {
   timestamps: true
@@ -209,3 +238,28 @@ module.exports = {
   QRScanLog,
   ChatMessage
 };
+
+// Public Fault Report Schema
+const publicFaultReportSchema = new mongoose.Schema({
+  faultType: { type: String, required: true, trim: true },
+  description: { type: String, required: true, trim: true },
+  // Reporter current location (auto captured)
+  locationText: { type: String, trim: true },
+  geoLat: { type: Number, min: -90, max: 90 },
+  geoLng: { type: Number, min: -180, max: 180 },
+  // Incident location (picked on map)
+  incidentLocationText: { type: String, trim: true },
+  incidentLat: { type: Number, min: -90, max: 90 },
+  incidentLng: { type: Number, min: -180, max: 180 },
+  ipAddress: { type: String, trim: true },
+  photoPath: { type: String, trim: true },
+  reporterPhone: { type: String, trim: true },
+  reporterUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  status: { type: String, enum: ['new','in_review','resolved'], default: 'new' }
+}, { timestamps: true });
+
+publicFaultReportSchema.index({ createdAt: -1 });
+
+const PublicFaultReport = mongoose.model('PublicFaultReport', publicFaultReportSchema);
+
+module.exports.PublicFaultReport = PublicFaultReport;

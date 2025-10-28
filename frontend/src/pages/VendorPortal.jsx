@@ -48,6 +48,10 @@ export default function VendorPortal() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [chatLoading, setChatLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const chatFileInputRef = useRef(null);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(null);
 
   // Tracking states
   const [trackingItems, setTrackingItems] = useState([]);
@@ -266,6 +270,9 @@ export default function VendorPortal() {
       const response = await chatAPI.getMessages(userId);
       if (response.data.success) {
         setMessages(response.data.messages);
+        // Refresh conversations to update unread counts
+        await fetchConversations();
+        await fetchUnreadCount();
       }
     } catch (err) {
       console.error('Error fetching messages:', err);
@@ -275,19 +282,37 @@ export default function VendorPortal() {
   };
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedUser) return;
+    if ((!newMessage.trim() && selectedFiles.length === 0) || !selectedUser) return;
 
     try {
-      const response = await chatAPI.sendMessage(selectedUser.username, newMessage);
+      const response = await chatAPI.sendMessage(
+        selectedUser.username, 
+        newMessage, 
+        {
+          files: selectedFiles,
+          repliedTo: replyingTo?.id
+        }
+      );
       if (response.data.success) {
         setMessages([...messages, response.data.chatMessage]);
         setNewMessage('');
+        setSelectedFiles([]);
+        setReplyingTo(null);
         fetchUnreadCount();
       }
     } catch (err) {
       console.error('Error sending message:', err);
       alert(err.response?.data?.message || 'Failed to send message');
     }
+  };
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    setSelectedFiles([...selectedFiles, ...files]);
+  };
+
+  const removeFile = (index) => {
+    setSelectedFiles(selectedFiles.filter((_, i) => i !== index));
   };
 
   const handleUserSearch = async (query) => {
@@ -311,20 +336,60 @@ export default function VendorPortal() {
     setSelectedUser(user);
     setSearchQuery('');
     setSearchResults([]);
-    await fetchMessages(user.id);
+    // conversations use userId, search results use id
+    const userId = user.userId || user.id;
+    await fetchMessages(userId);
   };
 
   const handleNewMessage = (data) => {
+    console.log('New message received:', data);
+    
+    // Play beep sound for new message
+    playNotificationSound();
+    
     // Update unread count
     fetchUnreadCount();
     
-    // If the message is from the currently selected user, add it to messages
-    if (selectedUser && data.sender.id === selectedUser.id) {
-      setMessages(prev => [...prev, data]);
-    }
-    
-    // Update conversations
+    // Always update conversations to show new message preview
     fetchConversations();
+    
+    // If the message is from the currently selected user, add it to messages
+    const selectedUserId = selectedUser?.id || selectedUser?.userId;
+    if (selectedUser && data.sender.id === selectedUserId) {
+      setMessages(prev => {
+        // Check if message already exists to avoid duplicates
+        const exists = prev.some(msg => msg.id === data.id);
+        if (exists) return prev;
+        return [...prev, data];
+      });
+      // Scroll to bottom
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  };
+
+  const playNotificationSound = () => {
+    try {
+      // Create a simple beep sound using AudioContext
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800; // Beep frequency
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.1);
+    } catch (e) {
+      console.log('Could not play notification sound:', e);
+    }
   };
 
   const handleLogout = () => {
@@ -332,9 +397,13 @@ export default function VendorPortal() {
     navigate('/login');
   };
 
-  const handleChatOpen = () => {
+  const handleChatOpen = async () => {
     setChatOpen(true);
-    fetchConversations();
+    await fetchConversations();
+    // Auto-select the first conversation (most recent)
+    if (conversations.length > 0 && !selectedUser) {
+      await handleSelectUser(conversations[0]);
+    }
   };
 
   const fetchTrackingItems = async () => {
@@ -886,7 +955,7 @@ export default function VendorPortal() {
                     key={conv.userId}
                     onClick={() => handleSelectUser(conv)}
                     className={`w-full text-left px-4 py-3 border-b hover:bg-gray-50 ${
-                      selectedUser?.id === conv.userId ? 'bg-blue-50' : ''
+                      (selectedUser?.id || selectedUser?.userId) === conv.userId ? 'bg-blue-50' : ''
                     }`}
                   >
                     <div className="flex justify-between items-start">
@@ -933,10 +1002,98 @@ export default function VendorPortal() {
                                 : 'bg-gray-200 text-gray-800'
                             }`}
                           >
-                            <p>{msg.message}</p>
-                            <p className="text-xs mt-1 opacity-70">
-                              {new Date(msg.createdAt).toLocaleTimeString()}
-                            </p>
+                            {msg.repliedTo && (
+                              <div className="mb-2 p-2 bg-black/10 rounded text-xs border-l-2 border-current">
+                                <p className="font-semibold">{msg.repliedTo.sender?.username || 'User'}</p>
+                                <p className="truncate">{msg.repliedTo.message}</p>
+                              </div>
+                            )}
+                            
+                            {msg.message && <p>{msg.message}</p>}
+                            
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <div className="mt-2 space-y-2">
+                                {msg.attachments.map((att, idx) => (
+                                  <div key={idx}>
+                                    {att.mimetype?.startsWith('image/') ? (
+                                      <div className="relative">
+                                        {(() => {
+                                          // Extract just filename from path (handle both old full paths and new filenames)
+                                          const getFileUrl = (filepath) => {
+                                            if (!filepath) return att.filename;
+                                            // If it's a full path, extract just the filename
+                                            if (filepath.includes('/') || filepath.includes('\\')) {
+                                              return filepath.split(/[/\\]/).pop();
+                                            }
+                                            return filepath;
+                                          };
+                                          const fileUrl = getFileUrl(att.filepath);
+                                          return (
+                                            <>
+                                              <a 
+                                                href={`http://localhost:8000/uploads/chat/${fileUrl}`}
+                                                download={att.filename}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                              >
+                                                <img 
+                                                  src={`http://localhost:8000/uploads/chat/${fileUrl}`} 
+                                                  alt={att.filename}
+                                                  className="max-w-xs rounded-lg hover:opacity-90 cursor-pointer"
+                                                />
+                                              </a>
+                                              <span className="text-xs text-gray-300 block mt-1">{att.filename}</span>
+                                            </>
+                                          );
+                                        })()}
+                                      </div>
+                                    ) : (
+                                      <a 
+                                        href={`http://localhost:8000/uploads/chat/${att.filepath ? att.filepath.split(/[/\\]/).pop() : att.filename}`}
+                                        download={att.filename}
+                                        className="flex items-center space-x-2 underline p-2 bg-black/20 rounded"
+                                      >
+                                        <span>📎 {att.filename}</span>
+                                      </a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {msg.reactions && msg.reactions.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {msg.reactions.map((reaction, idx) => (
+                                  <span key={idx} className="bg-black/20 px-2 py-1 rounded text-xs">
+                                    {reaction.emoji}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            
+                            <div className="flex items-center justify-between mt-1">
+                              <p className="text-xs opacity-70">
+                                {new Date(msg.createdAt).toLocaleTimeString()}
+                              </p>
+                              {msg.isPriority && (
+                                <span className="text-xs">⭐ Priority</span>
+                              )}
+                            </div>
+                            
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                onClick={() => setShowEmojiPicker(msg.id)}
+                                className="text-xs hover:underline"
+                              >
+                                😊 React
+                              </button>
+                              <button
+                                onClick={() => setReplyingTo(msg)}
+                                className="text-xs hover:underline"
+                              >
+                                ↪️ Reply
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ))
@@ -944,8 +1101,56 @@ export default function VendorPortal() {
                     <div ref={messagesEndRef} />
                   </div>
                   
+                  {replyingTo && (
+                    <div className="px-4 py-2 bg-blue-50 border-t border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm">
+                          <span className="font-semibold">Replying to {replyingTo.sender?.username}</span>
+                          <p className="text-gray-600 truncate">{replyingTo.message}</p>
+                        </div>
+                        <button
+                          onClick={() => setReplyingTo(null)}
+                          className="text-gray-500 hover:text-gray-700"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {selectedFiles.length > 0 && (
+                    <div className="px-4 py-2 bg-gray-100 border-t">
+                      <div className="flex flex-wrap gap-2">
+                        {selectedFiles.map((file, idx) => (
+                          <div key={idx} className="flex items-center space-x-2 bg-white px-2 py-1 rounded border">
+                            <span className="text-xs">{file.name}</span>
+                            <button
+                              onClick={() => removeFile(idx)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="p-4 border-t">
                     <div className="flex space-x-2">
+                      <input
+                        ref={chatFileInputRef}
+                        type="file"
+                        multiple
+                        onChange={handleFileSelect}
+                        style={{ display: 'none' }}
+                      />
+                      <button
+                        onClick={() => chatFileInputRef.current?.click()}
+                        className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                      >
+                        📎
+                      </button>
                       <input
                         type="text"
                         value={newMessage}

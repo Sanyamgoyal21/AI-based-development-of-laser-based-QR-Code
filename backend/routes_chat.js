@@ -1,8 +1,34 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const { ChatMessage, User } = require('./models');
 const { authenticateUser } = require('./auth');
 
 const router = express.Router();
+
+// Setup multer for chat file uploads
+const chatUploadDir = path.join(__dirname, 'uploads', 'chat');
+if (!fs.existsSync(chatUploadDir)) {
+  fs.mkdirSync(chatUploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, chatUploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'chat-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
+});
 
 // Get all users that the current user can chat with
 router.get('/available-users', authenticateUser, async (req, res) => {
@@ -53,8 +79,8 @@ router.get('/conversations', authenticateUser, async (req, res) => {
   try {
     const currentUserId = req.user._id;
     
-    // Get all unique users with whom the current user has exchanged messages
-    const messages = await ChatMessage.aggregate([
+    // Get distinct user IDs with whom the current user has exchanged messages
+    const distinctUsers = await ChatMessage.aggregate([
       {
         $match: {
           $or: [
@@ -64,9 +90,6 @@ router.get('/conversations', authenticateUser, async (req, res) => {
         }
       },
       {
-        $sort: { createdAt: -1 }
-      },
-      {
         $group: {
           _id: {
             $cond: [
@@ -74,49 +97,71 @@ router.get('/conversations', authenticateUser, async (req, res) => {
               '$receiver',
               '$sender'
             ]
-          },
-          lastMessage: { $first: '$message' },
-          lastMessageTime: { $first: '$createdAt' },
-          unreadCount: {
-            $sum: {
-              $cond: [
-                {
-                  $and: [
-                    { $eq: ['$receiver', currentUserId] },
-                    { $eq: ['$isRead', false] }
-                  ]
-                },
-                1,
-                0
-              ]
-            }
           }
         }
       }
     ]);
     
+    // For each user, get the last message and unread count
+    const conversations = await Promise.all(
+      distinctUsers.map(async (userData) => {
+        const otherUserId = userData._id;
+        
+        // Get the last message between current user and this other user
+        const lastMessage = await ChatMessage.findOne({
+          $or: [
+            { sender: currentUserId, receiver: otherUserId },
+            { sender: otherUserId, receiver: currentUserId }
+          ]
+        })
+          .sort({ createdAt: -1 })
+          .populate('sender', 'username fullName role')
+          .populate('receiver', 'username fullName role');
+        
+        // Get unread count for messages from this user to current user
+        const unreadCount = await ChatMessage.countDocuments({
+          sender: otherUserId,
+          receiver: currentUserId,
+          isRead: false
+        });
+        
+        return {
+          userId: otherUserId,
+          lastMessage: lastMessage?.message || '',
+          lastMessageTime: lastMessage?.createdAt,
+          unreadCount: unreadCount,
+          lastMessageId: lastMessage?._id
+        };
+      })
+    );
+    
     // Populate user details
-    const userIds = messages.map(m => m._id);
+    const userIds = conversations.map(c => c.userId);
     const users = await User.find({ _id: { $in: userIds } })
       .select('username fullName role email vendorInfo');
     
-    const conversations = messages.map(msg => {
-      const user = users.find(u => u._id.toString() === msg._id.toString());
+    const conversationsWithUsers = conversations.map(conv => {
+      const user = users.find(u => u._id.toString() === conv.userId.toString());
       return {
-        userId: msg._id,
+        userId: conv.userId,
         username: user?.username,
         fullName: user?.fullName,
         role: user?.role,
+        email: user?.email,
         companyName: user?.vendorInfo?.companyName,
-        lastMessage: msg.lastMessage,
-        lastMessageTime: msg.lastMessageTime,
-        unreadCount: msg.unreadCount
+        lastMessage: conv.lastMessage,
+        lastMessageTime: conv.lastMessageTime,
+        unreadCount: conv.unreadCount
       };
-    }).sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
+    }).sort((a, b) => {
+      if (!a.lastMessageTime) return 1;
+      if (!b.lastMessageTime) return -1;
+      return new Date(b.lastMessageTime) - new Date(a.lastMessageTime);
+    });
     
     res.json({
       success: true,
-      conversations
+      conversations: conversationsWithUsers
     });
   } catch (error) {
     console.error('Get conversations error:', error);
@@ -132,6 +177,14 @@ router.get('/messages/:userId', authenticateUser, async (req, res) => {
   try {
     const currentUserId = req.user._id;
     const { userId } = req.params;
+    
+    // Check if userId is valid
+    if (!userId || userId === 'undefined') {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid user ID is required'
+      });
+    }
     
     // Verify the other user exists
     const otherUser = await User.findById(userId).select('username fullName role');
@@ -159,6 +212,7 @@ router.get('/messages/:userId', authenticateUser, async (req, res) => {
     })
       .populate('sender', 'username fullName role')
       .populate('receiver', 'username fullName role')
+      .populate('repliedTo')
       .sort({ createdAt: 1 });
     
     // Mark messages as read
@@ -184,6 +238,11 @@ router.get('/messages/:userId', authenticateUser, async (req, res) => {
           role: msg.receiver.role
         },
         message: msg.message,
+        messageType: msg.messageType,
+        attachments: msg.attachments,
+        reactions: msg.reactions,
+        isPriority: msg.isPriority,
+        repliedTo: msg.repliedTo,
         isRead: msg.isRead,
         readAt: msg.readAt,
         createdAt: msg.createdAt
@@ -198,15 +257,23 @@ router.get('/messages/:userId', authenticateUser, async (req, res) => {
   }
 });
 
-// Send a message
-router.post('/send', authenticateUser, async (req, res) => {
+// Send a message with optional file attachment
+router.post('/send', upload.array('files', 5), authenticateUser, async (req, res) => {
   try {
-    const { receiverUsername, message } = req.body;
+    const { receiverUsername, message, messageType = 'text', isPriority = false, repliedTo } = req.body;
     
-    if (!receiverUsername || !message) {
+    if (!receiverUsername) {
       return res.status(400).json({
         success: false,
-        message: 'Receiver username and message are required'
+        message: 'Receiver username is required'
+      });
+    }
+    
+    // At least one of message or files must be provided
+    if (!message && (!req.files || req.files.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Either message text or file attachment is required'
       });
     }
     
@@ -229,17 +296,51 @@ router.post('/send', authenticateUser, async (req, res) => {
       });
     }
     
+    // Process attachments if any
+    const attachments = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        // file.filename from multer already contains just the filename (e.g., 'chat-123.jpg')
+        // file.path is the full path (e.g., 'C:/.../uploads/chat/chat-123.jpg')
+        attachments.push({
+          filename: file.originalname, // Original uploaded filename
+          filepath: file.filename,     // Multer-generated filename (e.g., 'chat-123.jpg')
+          mimetype: file.mimetype,
+          size: file.size
+        });
+      }
+    }
+    
+    // Determine message type from attachments
+    let finalMessageType = messageType;
+    if (attachments.length > 0) {
+      const mimeType = attachments[0].mimetype;
+      if (mimeType.startsWith('image/')) {
+        finalMessageType = 'image';
+      } else if (mimeType.startsWith('video/')) {
+        finalMessageType = 'video';
+      } else {
+        finalMessageType = 'document';
+      }
+    }
+    
     // Create chat message
-    const chatMessage = new ChatMessage({
+    const chatMessageData = {
       sender: req.user._id,
       receiver: receiver._id,
-      message: message.trim()
-    });
+      message: message ? message.trim() : '',
+      messageType: finalMessageType,
+      attachments: attachments,
+      isPriority: isPriority === 'true' || isPriority === true,
+      repliedTo: repliedTo || null
+    };
     
+    const chatMessage = new ChatMessage(chatMessageData);
     await chatMessage.save();
     
     // Populate sender details for response
     await chatMessage.populate('sender', 'username fullName role');
+    await chatMessage.populate('repliedTo');
     
     // Emit socket event for real-time chat
     try {
@@ -260,8 +361,17 @@ router.post('/send', authenticateUser, async (req, res) => {
             role: receiver.role
           },
           message: chatMessage.message,
+          messageType: chatMessage.messageType,
+          attachments: chatMessage.attachments,
+          isPriority: chatMessage.isPriority,
+          repliedTo: chatMessage.repliedTo,
           isRead: chatMessage.isRead,
           createdAt: chatMessage.createdAt
+        });
+        
+        // Also notify sender's own socket for local state update
+        io.to(`user_${req.user._id}`).emit('message_sent', {
+          id: chatMessage._id
         });
       }
     } catch (e) {
@@ -286,6 +396,10 @@ router.post('/send', authenticateUser, async (req, res) => {
           role: receiver.role
         },
         message: chatMessage.message,
+        messageType: chatMessage.messageType,
+        attachments: chatMessage.attachments,
+        isPriority: chatMessage.isPriority,
+        repliedTo: chatMessage.repliedTo,
         isRead: chatMessage.isRead,
         createdAt: chatMessage.createdAt
       }
@@ -298,6 +412,87 @@ router.post('/send', authenticateUser, async (req, res) => {
     });
   }
 });
+
+// Add reaction to a message
+router.post('/reaction/:messageId', authenticateUser, async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { emoji } = req.body;
+    
+    if (!emoji) {
+      return res.status(400).json({
+        success: false,
+        message: 'Emoji is required'
+      });
+    }
+    
+    const message = await ChatMessage.findById(messageId);
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found'
+      });
+    }
+    
+    // Remove existing reaction from this user
+    message.reactions = message.reactions.filter(r => r.userId.toString() !== req.user._id.toString());
+    
+    // Add new reaction
+    message.reactions.push({
+      userId: req.user._id,
+      emoji: emoji
+    });
+    
+    await message.save();
+    
+    res.json({
+      success: true,
+      reactions: message.reactions
+    });
+  } catch (error) {
+    console.error('Add reaction error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Remove reaction from a message
+router.delete('/reaction/:messageId/:emoji', authenticateUser, async (req, res) => {
+  try {
+    const { messageId, emoji } = req.params;
+    
+    const message = await ChatMessage.findById(messageId);
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found'
+      });
+    }
+    
+    // Remove reaction
+    message.reactions = message.reactions.filter(
+      r => !(r.userId.toString() === req.user._id.toString() && r.emoji === emoji)
+    );
+    
+    await message.save();
+    
+    res.json({
+      success: true,
+      reactions: message.reactions
+    });
+  } catch (error) {
+    console.error('Remove reaction error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Note: Chat files are served statically via /uploads/chat in app.js
+// This endpoint can be used for additional security/validation if needed
 
 // Get unread message count
 router.get('/unread-count', authenticateUser, async (req, res) => {
